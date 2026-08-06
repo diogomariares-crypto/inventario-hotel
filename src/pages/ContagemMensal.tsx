@@ -27,6 +27,9 @@ export default function ContagemMensal() {
   const [busca, setBusca] = useState('')
   const [aberto, setAberto] = useState<string | null>(null)
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // espelho sempre atualizado de `entries`, para o gravador diferido nunca ler estado velho
+  const entriesRef = useRef<Record<string, Entry>>({})
+  entriesRef.current = entries
 
   const meses = useMemo(() => {
     const base = monthRange(12, 1)
@@ -90,9 +93,13 @@ export default function ContagemMensal() {
 
   const set = async (itemId: string, patch: Partial<Entry>) => {
     if (!editable || !hotelId) return
-    const atual = entries[itemId] ?? { qty: 0, quebras: 0, motivo: null, comentario: null }
+    const atual = entriesRef.current[itemId] ?? { qty: 0, quebras: 0, motivo: null, comentario: null }
     const novo = { ...atual, ...patch }
-    setEntries(e => ({ ...e, [itemId]: novo }))
+    setEntries(e => {
+      const next = { ...e, [itemId]: novo }
+      entriesRef.current = next
+      return next
+    })
 
     clearTimeout(timers.current[itemId])
     timers.current[itemId] = setTimeout(async () => {

@@ -25,6 +25,9 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(0)
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  // espelho sempre atualizado de `rows`, para o gravador diferido nunca ler estado velho
+  const rowsRef = useRef<Record<string, Row>>({})
+  rowsRef.current = rows
 
   /* ------------------------------ carregamento ----------------------------- */
   useEffect(() => {
@@ -99,10 +102,14 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
   /* --------------------------------- gravar -------------------------------- */
   const save = (itemId: string, patch: Partial<Count>) => {
     if (!period || !editable) return
-    setRows(r => ({ ...r, [itemId]: { ...r[itemId], ...patch } }))
+    setRows(r => {
+      const next = { ...r, [itemId]: { ...r[itemId], ...patch } }
+      rowsRef.current = next
+      return next
+    })
     clearTimeout(timers.current[itemId])
     timers.current[itemId] = setTimeout(async () => {
-      const r = { ...rows[itemId], ...patch }
+      const r = rowsRef.current[itemId]
       setSaving(s => s + 1)
       try {
         await upsertCount({

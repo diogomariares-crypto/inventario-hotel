@@ -321,3 +321,18 @@ exception when duplicate_object then null; end $$;
 do $$ begin
   alter publication supabase_realtime add table public.periods;
 exception when duplicate_object then null; end $$;
+
+-- ---------- Endurecimento aplicado depois da migração ----------
+-- Tabelas de uma experiência anterior no mesmo projeto Supabase: ficam
+-- guardadas, mas deixam de estar acessíveis pela API pública.
+alter table if exists public.config    enable row level security;
+alter table if exists public.sessoes   enable row level security;
+alter table if exists public.produtos  enable row level security;
+alter table if exists public.contagens enable row level security;
+revoke all on public.config, public.sessoes, public.produtos, public.contagens from anon, authenticated;
+
+-- Funções internas não devem ser chamáveis pela API REST.
+revoke execute on function public.handle_new_user() from anon, authenticated, public;
+revoke execute on function public.has_role(uuid, app_role) from anon, public;
+revoke execute on function public.is_admin() from anon, public;
+revoke execute on function public.can_write_dept(department) from anon, public;

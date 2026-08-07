@@ -41,12 +41,14 @@ export default function Dados() {
       downloadCSV(`inventario_completo_${hotels.find(h => h.id === hotelId)?.slug ?? ''}.csv`, [
         ['departamento', 'tipo', 'periodo_inicio', 'periodo_fim', 'quartos_ocupados', 'item',
          'referencia', 'categoria', 'fornecedor', 'unidade', 'preco_unitario_eur',
-         'inv_inicial', 'comprado', 'valor_pago_eur', 'inv_final', 'quebras', 'motivo', 'comentario',
+         'inv_inicial', 'recebido_encomendas', 'outras_entradas', 'valor_pago_eur',
+         'inv_final', 'quebras', 'motivo', 'comentario',
          'utilizado', 'custo_utilizado_eur', 'valor_stock_eur', 'custo_por_quarto_eur'],
         ...rows.map(r => [
           r.department, r.kind, r.start_date, r.end_date, r.occupied_rooms, r.item_name,
           r.ref, r.category, r.supplier, r.unit, r.unit_price_eur,
-          r.opening_qty, r.purchased_qty, r.amount_paid_eur, r.closing_qty, r.quebras, r.motivo, r.comentario,
+          r.opening_qty, r.received_qty, r.purchased_qty, r.amount_paid_eur,
+          r.closing_qty, r.quebras, r.motivo, r.comentario,
           r.used_qty, r.cost_used_eur, r.stock_value_eur, r.cost_per_room_eur,
         ]),
       ])

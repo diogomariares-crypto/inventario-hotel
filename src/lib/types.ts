@@ -73,6 +73,36 @@ export interface Count {
   updated_at: string
 }
 
+export interface Purchase {
+  id: string
+  hotel_id: string
+  item_id: string
+  qty: number
+  amount_paid_eur: number
+  order_date: string
+  received_date: string | null
+  supplier: string | null
+  note: string | null
+  created_by: string | null
+  received_by: string | null
+  created_at: string
+}
+
+export interface StockRow {
+  item_id: string
+  item_name: string
+  department: Department
+  unit: string
+  par_qty: number | null
+  unit_price_eur: number | null
+  hotel_id: string
+  hotel_slug: string
+  stock_atual: number | null
+  contado_em: string | null
+  por_chegar: number
+  sugerido: number | null
+}
+
 export interface VCount {
   id: string
   hotel_id: string
@@ -93,8 +123,11 @@ export interface VCount {
   supplier: string | null
   unit: string
   unit_price_eur: number | null
+  par_qty: number | null
   opening_qty: number
   purchased_qty: number
+  received_qty: number
+  entradas_qty: number
   amount_paid_eur: number
   closing_qty: number
   quebras: number

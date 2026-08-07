@@ -336,3 +336,106 @@ revoke execute on function public.handle_new_user() from anon, authenticated, pu
 revoke execute on function public.has_role(uuid, app_role) from anon, public;
 revoke execute on function public.is_admin() from anon, public;
 revoke execute on function public.can_write_dept(department) from anon, public;
+
+-- =====================================================================
+-- Encomendas: só o que chega dentro do período conta para o consumo
+-- =====================================================================
+alter table public.purchases
+  add column if not exists supplier text,
+  add column if not exists note text,
+  add column if not exists created_by text,
+  add column if not exists received_by text;
+
+create index if not exists purchases_pendentes_idx
+  on public.purchases (hotel_id, item_id) where received_date is null;
+create index if not exists purchases_recebidas_idx
+  on public.purchases (hotel_id, item_id, received_date);
+
+-- v_counts passa a somar as encomendas recebidas dentro do período:
+--   utilizado = inv_inicial + recebido + outras_entradas - inv_final
+drop view if exists public.v_counts;
+create view public.v_counts
+with (security_invoker = true) as
+with recebido as (
+  select p.id as period_id, pu.item_id,
+         sum(pu.qty) as qty, sum(pu.amount_paid_eur) as valor
+  from public.purchases pu
+  join public.items i   on i.id = pu.item_id
+  join public.periods p on p.hotel_id = pu.hotel_id and p.department = i.department
+                       and pu.received_date between p.start_date and p.end_date
+  group by p.id, pu.item_id
+)
+select
+  c.id, p.hotel_id, h.slug as hotel_slug, h.name as hotel_name,
+  p.department, p.kind, p.id as period_id, p.start_date, p.end_date, p.label,
+  p.occupied_rooms, p.status,
+  i.id as item_id, i.name as item_name, i.ref, i.category, i.supplier, i.unit, i.par_qty,
+  coalesce(c.unit_price_eur, i.unit_price_eur) as unit_price_eur,
+  c.opening_qty, c.purchased_qty,
+  coalesce(r.qty, 0) as received_qty,
+  c.purchased_qty + coalesce(r.qty, 0) as entradas_qty,
+  c.amount_paid_eur + coalesce(r.valor, 0) as amount_paid_eur,
+  c.closing_qty, c.quebras, c.motivo, c.comentario,
+  (c.opening_qty + c.purchased_qty + coalesce(r.qty,0) - c.closing_qty) as used_qty,
+  case when coalesce(c.unit_price_eur, i.unit_price_eur) is null then null
+       else (c.opening_qty + c.purchased_qty + coalesce(r.qty,0) - c.closing_qty)
+            * coalesce(c.unit_price_eur, i.unit_price_eur) end as cost_used_eur,
+  case when coalesce(c.unit_price_eur, i.unit_price_eur) is null then null
+       else c.closing_qty * coalesce(c.unit_price_eur, i.unit_price_eur) end as stock_value_eur,
+  case when p.occupied_rooms is null or p.occupied_rooms = 0 then null
+       else (c.opening_qty + c.purchased_qty + coalesce(r.qty,0) - c.closing_qty)
+            / p.occupied_rooms end as used_per_room,
+  case when p.occupied_rooms is null or p.occupied_rooms = 0
+         or coalesce(c.unit_price_eur, i.unit_price_eur) is null then null
+       else ((c.opening_qty + c.purchased_qty + coalesce(r.qty,0) - c.closing_qty)
+            * coalesce(c.unit_price_eur, i.unit_price_eur)) / p.occupied_rooms
+  end as cost_per_room_eur,
+  c.updated_at, c.updated_by
+from public.counts c
+join public.periods p on p.id = c.period_id
+join public.hotels  h on h.id = p.hotel_id
+join public.items   i on i.id = c.item_id
+left join recebido  r on r.period_id = p.id and r.item_id = c.item_id;
+
+-- Apoio ao ecrã de encomendas: stock atual, por chegar e sugestão de compra
+create or replace view public.v_stock_atual
+with (security_invoker = true) as
+select
+  i.id as item_id, i.name as item_name, i.department, i.unit, i.par_qty,
+  i.unit_price_eur, h.id as hotel_id, h.slug as hotel_slug,
+  ultima.closing_qty as stock_atual, ultima.start_date as contado_em,
+  coalesce(pend.qty, 0) as por_chegar,
+  case when i.par_qty is null then null
+       else greatest(i.par_qty - coalesce(ultima.closing_qty,0) - coalesce(pend.qty,0), 0)
+  end as sugerido
+from public.items i
+join public.hotels h on h.id = i.hotel_id
+left join lateral (
+  select c.closing_qty, p.start_date
+  from public.counts c join public.periods p on p.id = c.period_id
+  where c.item_id = i.id and p.hotel_id = h.id and c.closing_counted
+  order by p.start_date desc limit 1
+) ultima on true
+left join lateral (
+  select sum(pu.qty) as qty from public.purchases pu
+  where pu.item_id = i.id and pu.hotel_id = h.id and pu.received_date is null
+) pend on true
+where i.active and i.department in ('FO','HSK');
+
+drop policy if exists purchases_write on public.purchases;
+create policy purchases_ins on public.purchases for insert to authenticated
+  with check (exists (select 1 from public.items i
+                      where i.id = item_id and public.can_write_dept(i.department)));
+create policy purchases_upd on public.purchases for update to authenticated
+  using (exists (select 1 from public.items i
+                 where i.id = item_id and public.can_write_dept(i.department)))
+  with check (exists (select 1 from public.items i
+                      where i.id = item_id and public.can_write_dept(i.department)));
+create policy purchases_del on public.purchases for delete to authenticated
+  using (exists (select 1 from public.items i
+                 where i.id = item_id and public.can_write_dept(i.department)));
+
+alter table public.purchases replica identity full;
+do $$ begin
+  alter publication supabase_realtime add table public.purchases;
+exception when duplicate_object then null; end $$;

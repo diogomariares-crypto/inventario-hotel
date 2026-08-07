@@ -5,8 +5,10 @@ Substitui as duas apps anteriores (Inventário Restaurante e Room Cost Tracker),
 juntando num só sítio:
 
 - **F&B / Restaurante** — contagem **mensal** por categoria e fornecedor, com quebras e motivo
-- **Front Office** e **Housekeeping** — contagem **semanal** com inventário inicial/final,
-  compras e **custo por quarto ocupado**
+- **Front Office** e **Housekeeping** — contagem **semanal** com inventário inicial/final
+  e **custo por quarto ocupado**
+- **Encomendas** — o que falta comprar face ao stock ideal, registo da encomenda e
+  registo da chegada. Só o que **chega** dentro da semana entra no consumo dessa semana
 - **Painel** com evolução do €/quarto, top de itens por custo e totais mensais
 - **Histórico** e exportação para CSV/Excel
 - **Gestão de itens, preços e utilizadores** (administrador)
@@ -66,10 +68,18 @@ Tabelas principais:
 Fórmulas (na vista `v_counts`, para nunca divergirem entre ecrãs):
 
 ```
-utilizado      = inv_inicial + comprado − inv_final
+recebido       = Σ encomendas cuja data de chegada cai dentro do período
+utilizado      = inv_inicial + recebido + outras_entradas − inv_final
 custo          = utilizado × preço_unitário
 custo_p/quarto = custo ÷ quartos_ocupados      (nulo se não houver quartos)
 ```
+
+Exemplo: contam-se 100 agrafes a 03/08; encomendam-se 400 a 04/08; chegam a 07/08;
+na contagem de 10/08 há 300. Consumo = 100 + 400 − 300 = **200**. Se os agrafes só
+chegassem a 12/08, os 400 não entravam nesta semana — entravam na seguinte.
+
+A vista `v_stock_atual` alimenta o ecrã de encomendas: stock da última contagem,
+quantidade já encomendada por chegar e sugestão de compra face ao `par_qty` do item.
 
 ## Permissões
 

@@ -3,8 +3,9 @@ import { useAuth } from '../lib/auth'
 import { useApp } from '../lib/appState'
 import {
   ensureWeek, fetchCounts, fetchItems, fetchPeriods, fetchPreviousClosing,
-  updatePeriod, upsertCount,
+  fetchReceivedInPeriod, updatePeriod, upsertCount,
 } from '../lib/data'
+import { Link } from 'react-router-dom'
 import type { Count, Department, Item, Period } from '../lib/types'
 import { addDays, dmy, money, qty, todayISO, weekLabel } from '../lib/format'
 import { Loading, NumInput, Spinner, useToast } from '../components/ui'
@@ -22,6 +23,7 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
   const [period, setPeriod] = useState<Period | null>(null)
   const [items, setItems] = useState<Item[]>([])
   const [rows, setRows] = useState<Record<string, Row>>({})
+  const [recebido, setRecebido] = useState<Record<string, { qty: number; valor: number; encomendas: number }>>({})
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(0)
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
@@ -43,14 +45,16 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
   }, [hotelId, dept])
 
   useEffect(() => {
-    if (!period) { setRows({}); return }
+    if (!period) { setRows({}); setRecebido({}); return }
     let alive = true
     ;(async () => {
-      const [cs, prev] = await Promise.all([
+      const [cs, prev, rec] = await Promise.all([
         fetchCounts(period.id),
         fetchPreviousClosing(dept, period.hotel_id, period.start_date),
+        fetchReceivedInPeriod(period.hotel_id, period.start_date, period.end_date),
       ])
       if (!alive) return
+      setRecebido(rec)
       const byItem: Record<string, Count> = {}
       for (const c of cs) byItem[c.item_id] = c
       const next: Record<string, Row> = {}
@@ -155,16 +159,20 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
     () => items.map(i => rows[i.id]).filter(Boolean),
     [items, rows],
   )
+  const entradas = (r: Row) => r.purchased_qty + (recebido[r.item_id]?.qty ?? 0)
+  const usado = (r: Row) => r.opening_qty + entradas(r) - r.closing_qty
+
   const totals = useMemo(() => {
-    let cost = 0, paid = 0, negativos = 0
+    let cost = 0, paid = 0, negativos = 0, comEncomenda = 0
     for (const r of list) {
-      const used = r.opening_qty + r.purchased_qty - r.closing_qty
+      const used = usado(r)
       if (used < 0) negativos++
       if (r.item.unit_price_eur != null) cost += used * Number(r.item.unit_price_eur)
-      paid += r.amount_paid_eur
+      paid += r.amount_paid_eur + (recebido[r.item_id]?.valor ?? 0)
+      if (recebido[r.item_id]) comEncomenda++
     }
-    return { cost, paid, negativos }
-  }, [list])
+    return { cost, paid, negativos, comEncomenda }
+  }, [list, recebido])
 
   const rooms = period?.occupied_rooms ?? null
 
@@ -254,8 +262,11 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
           </div>
 
           <div className="text-xs text-slate-500">
-            Período {dmy(period.start_date)} a {dmy(period.end_date)} · inventário inicial preenchido
-            automaticamente com o inventário final da semana anterior.
+            Período {dmy(period.start_date)} a {dmy(period.end_date)} · o inventário inicial vem do
+            inventário final da semana anterior e a coluna <strong>Recebido</strong> soma as encomendas
+            que chegaram dentro destas datas
+            {totals.comEncomenda > 0 && ` (${totals.comEncomenda} ${totals.comEncomenda === 1 ? 'item' : 'itens'})`}.{' '}
+            <Link to="/encomendas" className="text-brand-600 hover:underline">Gerir encomendas</Link>
           </div>
 
           {/* tabela */}
@@ -265,7 +276,8 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
                 <tr>
                   <th className="th">Item</th>
                   <th className="th text-right">Inv. inicial</th>
-                  <th className="th text-right">Comprado</th>
+                  <th className="th text-right" title="Encomendas que chegaram dentro desta semana">Recebido</th>
+                  <th className="th text-right" title="Entradas sem encomenda registada">Outras entradas</th>
                   <th className="th text-right">Valor pago</th>
                   <th className="th text-right">Inv. final</th>
                   <th className="th text-right">Utilizado</th>
@@ -275,7 +287,8 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {list.map(r => {
-                  const used = r.opening_qty + r.purchased_qty - r.closing_qty
+                  const used = usado(r)
+                  const rec = recebido[r.item_id]
                   const price = r.item.unit_price_eur == null ? null : Number(r.item.unit_price_eur)
                   const cost = price == null ? null : used * price
                   return (
@@ -294,6 +307,16 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
                           onChange={n => save(r.item_id, { opening_qty: n })}
                         />
                       </td>
+                      <td className="td w-24 text-right">
+                        {rec ? (
+                          <span
+                            className="inline-flex items-center gap-1 rounded-md bg-brand-50 px-2 py-1 text-sm font-medium tabular-nums text-brand-700"
+                            title={`${rec.encomendas} ${rec.encomendas === 1 ? 'encomenda chegou' : 'encomendas chegaram'} nesta semana`}
+                          >
+                            {qty(rec.qty)}
+                          </span>
+                        ) : <span className="text-sm text-slate-300">—</span>}
+                      </td>
                       <td className="td w-24">
                         <NumInput value={r.purchased_qty} disabled={!editable}
                                   onChange={n => save(r.item_id, { purchased_qty: n })} />
@@ -301,6 +324,11 @@ export default function ContagemSemanal({ dept }: { dept: Department }) {
                       <td className="td w-28">
                         <NumInput value={r.amount_paid_eur} disabled={!editable}
                                   onChange={n => save(r.item_id, { amount_paid_eur: n })} />
+                        {rec && rec.valor > 0 && (
+                          <div className="mt-0.5 text-right text-[10px] text-slate-400">
+                            +{money(rec.valor)} encomendas
+                          </div>
+                        )}
                       </td>
                       <td className="td w-24">
                         <NumInput value={r.closing_qty} disabled={!editable}

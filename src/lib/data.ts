@@ -1,5 +1,5 @@
 import { supabase } from './supabase'
-import type { Count, Department, Hotel, Item, Period, VCount } from './types'
+import type { Count, Department, Hotel, Item, Period, Purchase, StockRow, VCount } from './types'
 import { addDays, lastDayOfMonth, mondayOf } from './format'
 
 export async function fetchHotels(): Promise<Hotel[]> {
@@ -100,6 +100,80 @@ export async function updatePeriod(id: string, patch: Partial<Period>) {
   if (error) throw error
 }
 
+/* ------------------------------- Encomendas ------------------------------- */
+
+export async function fetchPurchases(hotelId: string, dept: Department) {
+  const { data, error } = await supabase
+    .from('purchases')
+    .select('*, items!inner(id, name, department, unit, unit_price_eur)')
+    .eq('hotel_id', hotelId)
+    .eq('items.department', dept)
+    .order('order_date', { ascending: false })
+  if (error) throw error
+  return (data ?? []) as unknown as (Purchase & {
+    items: { id: string; name: string; department: Department; unit: string; unit_price_eur: number | null }
+  })[]
+}
+
+export async function fetchStock(hotelId: string, dept: Department): Promise<StockRow[]> {
+  const { data, error } = await supabase
+    .from('v_stock_atual')
+    .select('*')
+    .eq('hotel_id', hotelId)
+    .eq('department', dept)
+    .order('item_name')
+  if (error) throw error
+  return (data ?? []).map(r => ({
+    ...r,
+    par_qty: r.par_qty === null ? null : Number(r.par_qty),
+    stock_atual: r.stock_atual === null ? null : Number(r.stock_atual),
+    por_chegar: Number(r.por_chegar),
+    sugerido: r.sugerido === null ? null : Number(r.sugerido),
+    unit_price_eur: r.unit_price_eur === null ? null : Number(r.unit_price_eur),
+  })) as StockRow[]
+}
+
+export async function createPurchase(p: {
+  hotel_id: string; item_id: string; qty: number; amount_paid_eur: number
+  order_date: string; supplier?: string | null; note?: string | null; created_by?: string | null
+}) {
+  const { error } = await supabase.from('purchases').insert(p)
+  if (error) throw error
+}
+
+export async function receivePurchase(id: string, received_date: string, by: string | null, qty?: number) {
+  const patch: Record<string, unknown> = { received_date, received_by: by }
+  if (qty !== undefined) patch.qty = qty
+  const { error } = await supabase.from('purchases').update(patch).eq('id', id)
+  if (error) throw error
+}
+
+export async function deletePurchase(id: string) {
+  const { error } = await supabase.from('purchases').delete().eq('id', id)
+  if (error) throw error
+}
+
+/** Quantidades recebidas dentro de um período, por item. */
+export async function fetchReceivedInPeriod(
+  hotelId: string, start: string, end: string,
+): Promise<Record<string, { qty: number; valor: number; encomendas: number }>> {
+  const { data, error } = await supabase
+    .from('purchases')
+    .select('item_id, qty, amount_paid_eur')
+    .eq('hotel_id', hotelId)
+    .gte('received_date', start)
+    .lte('received_date', end)
+  if (error) throw error
+  const out: Record<string, { qty: number; valor: number; encomendas: number }> = {}
+  for (const r of data ?? []) {
+    out[r.item_id] ??= { qty: 0, valor: 0, encomendas: 0 }
+    out[r.item_id].qty += Number(r.qty)
+    out[r.item_id].valor += Number(r.amount_paid_eur)
+    out[r.item_id].encomendas++
+  }
+  return out
+}
+
 /** Linhas calculadas para dashboard / exportação. */
 export async function fetchVCounts(filter: {
   hotelId?: string
@@ -121,6 +195,9 @@ export async function fetchVCounts(filter: {
     ...r,
     opening_qty: Number(r.opening_qty),
     purchased_qty: Number(r.purchased_qty),
+    received_qty: Number(r.received_qty),
+    entradas_qty: Number(r.entradas_qty),
+    par_qty: r.par_qty === null ? null : Number(r.par_qty),
     amount_paid_eur: Number(r.amount_paid_eur),
     closing_qty: Number(r.closing_qty),
     quebras: Number(r.quebras),

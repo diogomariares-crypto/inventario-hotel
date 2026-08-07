@@ -6,6 +6,7 @@ import Shell from './components/Shell'
 import Login from './pages/Login'
 import Dashboard from './pages/Dashboard'
 import Contagem from './pages/Contagem'
+import Encomendas from './pages/Encomendas'
 import Historico from './pages/Historico'
 import Itens from './pages/Itens'
 import Utilizadores from './pages/Utilizadores'
@@ -43,6 +44,7 @@ function Interior() {
       <Routes>
         <Route path="/" element={<Dashboard />} />
         <Route path="/contagem" element={<Contagem />} />
+        <Route path="/encomendas" element={<Encomendas />} />
         <Route path="/historico" element={<Historico />} />
         <Route path="/itens" element={<SoAdmin><Itens /></SoAdmin>} />
         <Route path="/utilizadores" element={<SoAdmin><Utilizadores /></SoAdmin>} />

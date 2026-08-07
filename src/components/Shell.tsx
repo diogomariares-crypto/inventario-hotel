@@ -7,6 +7,7 @@ import { useState } from 'react'
 const links = (isAdmin: boolean) => [
   { to: '/', label: 'Painel', icon: '▤' },
   { to: '/contagem', label: 'Contagem', icon: '☑' },
+  { to: '/encomendas', label: 'Encomendas', icon: '⇩' },
   { to: '/historico', label: 'Histórico', icon: '↺' },
   ...(isAdmin
     ? [
@@ -113,7 +114,7 @@ export default function Shell({ children }: { children: ReactNode }) {
       <main className="mx-auto max-w-7xl px-3 py-4 pb-24 sm:px-5 sm:py-6">{children}</main>
 
       <nav className="fixed bottom-0 z-30 flex w-full border-t border-slate-200 bg-white md:hidden">
-        {items.slice(0, 3).map(l => (
+        {items.slice(0, 4).map(l => (
           <NavLink
             key={l.to}
             to={l.to}

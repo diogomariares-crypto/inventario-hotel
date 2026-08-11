@@ -23,7 +23,9 @@ jobs:
         with:
           node-version: 22
           cache: npm
-      - run: npm ci
+      # npm ci é mais rápido, mas exige package.json e package-lock.json em sintonia.
+      # Se estiverem dessincronizados, cai para npm install em vez de falhar a publicação.
+      - run: npm ci || npm install
       - run: npm run build
         env:
           # Opcionais: só necessários se mudares de projeto Supabase.

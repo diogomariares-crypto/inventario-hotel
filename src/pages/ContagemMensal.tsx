@@ -91,8 +91,12 @@ export default function ContagemMensal() {
   )
   useEffect(() => { if (!cat && categorias.length) setCat(categorias[0]) }, [categorias])
 
+  // Um mês fechado fica protegido: para o corrigir é preciso reabri-lo.
+  const fechado = period?.status === 'submetido'
+  const podeEscrever = editable && !fechado
+
   const set = async (itemId: string, patch: Partial<Entry>) => {
-    if (!editable || !hotelId) return
+    if (!podeEscrever || !hotelId) return
     const atual = entriesRef.current[itemId] ?? { qty: 0, quebras: 0, motivo: null, comentario: null }
     const novo = { ...atual, ...patch }
     setEntries(e => {
@@ -179,12 +183,24 @@ export default function ContagemMensal() {
         <div className="ml-auto flex items-center gap-2 text-sm">
           {saving > 0 && <span className="flex items-center gap-1 text-slate-500"><Spinner /> a guardar</span>}
           {period && (
-            <span className={`chip ${period.status === 'submetido'
+            <span className={`chip ${fechado
               ? 'bg-brand-100 text-brand-700' : 'bg-amber-100 text-amber-800'}`}>
-              {period.status === 'submetido' ? 'Fechado' : 'Em contagem'}
+              {fechado ? 'Fechado' : 'Em contagem'}
             </span>
           )}
-          {editable && period && period.status !== 'submetido' && (
+          {editable && period && (fechado ? (
+            <button
+              className="btn-ghost"
+              onClick={async () => {
+                if (!confirm('Reabrir este mês para corrigir valores?')) return
+                await updatePeriod(period.id, { status: 'rascunho', submitted_at: null })
+                setPeriod({ ...period, status: 'rascunho' })
+                toast('Mês reaberto — já podes corrigir')
+              }}
+            >
+              Reabrir para corrigir
+            </button>
+          ) : (
             <button
               className="btn-primary"
               onClick={async () => {
@@ -195,7 +211,7 @@ export default function ContagemMensal() {
             >
               Fechar mês
             </button>
-          )}
+          ))}
         </div>
       </div>
 
@@ -212,6 +228,13 @@ export default function ContagemMensal() {
           </div>
         ))}
       </div>
+
+      {fechado && (
+        <div className="rounded-lg bg-brand-50 px-4 py-2.5 text-sm text-brand-800">
+          Este mês está fechado, por isso os valores estão protegidos.
+          {editable && <> Para corrigir alguma coisa, carrega em <strong>Reabrir para corrigir</strong>.</>}
+        </div>
+      )}
 
       {/* pesquisa */}
       <input
@@ -279,18 +302,18 @@ export default function ContagemMensal() {
                       <div className="flex items-center gap-1">
                         <button
                           className="h-9 w-9 rounded-lg border border-slate-200 text-lg leading-none text-slate-600 disabled:opacity-40"
-                          disabled={!editable}
+                          disabled={!podeEscrever}
                           onClick={() => set(i.id, { qty: Math.max(0, (e?.qty ?? 0) - 1) })}
                         >–</button>
                         <NumInput
                           className="w-20"
                           value={e?.qty ?? 0}
-                          disabled={!editable}
+                          disabled={!podeEscrever}
                           onChange={n => set(i.id, { qty: n })}
                         />
                         <button
                           className="h-9 w-9 rounded-lg border border-slate-200 text-lg leading-none text-slate-600 disabled:opacity-40"
-                          disabled={!editable}
+                          disabled={!podeEscrever}
                           onClick={() => set(i.id, { qty: (e?.qty ?? 0) + 1 })}
                         >+</button>
                       </div>
@@ -304,7 +327,7 @@ export default function ContagemMensal() {
                       <div className="grid gap-3 border-t border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-3">
                         <div>
                           <label className="label">Quebras</label>
-                          <NumInput value={e?.quebras ?? 0} disabled={!editable}
+                          <NumInput value={e?.quebras ?? 0} disabled={!podeEscrever}
                                     onChange={n => set(i.id, { quebras: n })} />
                         </div>
                         <div>
@@ -312,7 +335,7 @@ export default function ContagemMensal() {
                           <select
                             className="input"
                             value={e?.motivo ?? ''}
-                            disabled={!editable}
+                            disabled={!podeEscrever}
                             onChange={ev => set(i.id, { motivo: ev.target.value || null })}
                           >
                             <option value="">—</option>
@@ -321,7 +344,7 @@ export default function ContagemMensal() {
                         </div>
                         <div>
                           <label className="label">Comentário</label>
-                          <input className="input" value={e?.comentario ?? ''} disabled={!editable}
+                          <input className="input" value={e?.comentario ?? ''} disabled={!podeEscrever}
                                  onChange={ev => set(i.id, { comentario: ev.target.value || null })} />
                         </div>
                         <div className="text-xs text-slate-500 sm:col-span-3">

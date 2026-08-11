@@ -34,6 +34,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
   const [saving, setSaving] = useState(0)
   const [nova, setNova] = useState<{ data: string; inicio: string; primeira: boolean } | null>(null)
   const [editar, setEditar] = useState<{ inicio: string; data: string; linhas: number } | null>(null)
+  const [busca, setBusca] = useState('')
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const rowsRef = useRef<Record<string, Row>>({})
   rowsRef.current = rows
@@ -113,8 +114,12 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
   }, [period?.id])
 
   /* --------------------------------- gravar -------------------------------- */
+  // Uma contagem fechada fica protegida: para a corrigir é preciso reabri-la.
+  const fechada = period?.status === 'submetido'
+  const podeEscrever = editable && !fechada
+
   const save = (itemId: string, patch: Partial<Count>) => {
-    if (!period || !editable) return
+    if (!period || !podeEscrever) return
     setRows(r => {
       const next = { ...r, [itemId]: { ...r[itemId], ...patch } }
       rowsRef.current = next
@@ -214,8 +219,26 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
     toast('Contagem fechada')
   }
 
+  const reabrir = async () => {
+    if (!period) return
+    if (!confirm(
+      'Reabrir esta contagem para corrigir valores?\n\n' +
+      'Os números voltam a ficar editáveis e os totais no painel mudam conforme as correções.',
+    )) return
+    try {
+      await updatePeriod(period.id, { status: 'rascunho', submitted_at: null })
+      setPeriod({ ...period, status: 'rascunho' })
+      setPeriods(ps => ps.map(p => (p.id === period.id ? { ...p, status: 'rascunho' } : p)))
+      toast('Contagem reaberta — já podes corrigir')
+    } catch (e) { toast((e as Error).message, 'erro') }
+  }
+
   /* -------------------------------- cálculos ------------------------------- */
   const list = useMemo(() => items.map(i => rows[i.id]).filter(Boolean), [items, rows])
+  const visiveis = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return q ? list.filter(r => r.item.name.toLowerCase().includes(q)) : list
+  }, [list, busca])
   const entradas = (r: Row) => r.purchased_qty + (recebido[r.item_id]?.qty ?? 0)
   const usado = (r: Row) => r.opening_qty + entradas(r) - r.closing_qty
 
@@ -280,7 +303,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
           <label className="label">Quartos ocupados</label>
           <NumInput
             value={rooms ?? 0}
-            disabled={!editable || !period}
+            disabled={!podeEscrever || !period}
             onChange={n => {
               if (!period) return
               setPeriod({ ...period, occupied_rooms: n || null })
@@ -296,12 +319,13 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
         {period && (
           <div className="ml-auto flex items-center gap-2 text-sm">
             {saving > 0 && <span className="flex items-center gap-1 text-slate-500"><Spinner /> a guardar</span>}
-            <span className={`chip ${period.status === 'submetido'
+            <span className={`chip ${fechada
               ? 'bg-brand-100 text-brand-700' : 'bg-amber-100 text-amber-800'}`}>
-              {period.status === 'submetido' ? 'Fechada' : 'Em curso'}
+              {fechada ? 'Fechada' : 'Em curso'}
             </span>
-            {editable && period.status !== 'submetido' && (
-              <button className="btn-primary" onClick={submeter}>Fechar contagem</button>
+            {editable && (fechada
+              ? <button className="btn-ghost" onClick={reabrir}>Reabrir para corrigir</button>
+              : <button className="btn-primary" onClick={submeter}>Fechar contagem</button>
             )}
           </div>
         )}
@@ -378,6 +402,31 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
             <Link to="/encomendas" className="text-brand-600 hover:underline">Gerir encomendas</Link>
           </div>
 
+          {/* pesquisa */}
+          <div className="flex flex-wrap items-center gap-3">
+            <input
+              className="input flex-1"
+              placeholder="Procurar item nesta contagem…"
+              value={busca}
+              onChange={e => setBusca(e.target.value)}
+            />
+            {busca.trim() && (
+              <span className="text-sm text-slate-500">
+                {visiveis.length} de {list.length}
+                <button className="ml-2 text-brand-600 hover:underline" onClick={() => setBusca('')}>
+                  limpar
+                </button>
+              </span>
+            )}
+          </div>
+
+          {fechada && (
+            <div className="rounded-lg bg-brand-50 px-4 py-2.5 text-sm text-brand-800">
+              Esta contagem está fechada, por isso os valores estão protegidos.
+              {editable && <> Para corrigir alguma coisa, carrega em <strong>Reabrir para corrigir</strong>.</>}
+            </div>
+          )}
+
           {/* tabela */}
           <div className="card overflow-x-auto">
             <table className="w-full min-w-[820px]">
@@ -395,7 +444,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {list.map(r => {
+                {visiveis.map(r => {
                   const used = usado(r)
                   const rec = recebido[r.item_id]
                   const price = r.item.unit_price_eur == null ? null : Number(r.item.unit_price_eur)
@@ -411,7 +460,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
                       <td className="td w-24">
                         <NumInput
                           value={r.opening_qty}
-                          disabled={!editable || !isAdmin}
+                          disabled={!podeEscrever || !isAdmin}
                           title={isAdmin ? '' : 'Vem da contagem anterior — só o administrador altera'}
                           onChange={n => save(r.item_id, { opening_qty: n })}
                         />
@@ -425,11 +474,11 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
                         ) : <span className="text-sm text-slate-300">—</span>}
                       </td>
                       <td className="td w-24">
-                        <NumInput value={r.purchased_qty} disabled={!editable}
+                        <NumInput value={r.purchased_qty} disabled={!podeEscrever}
                                   onChange={n => save(r.item_id, { purchased_qty: n })} />
                       </td>
                       <td className="td w-28">
-                        <NumInput value={r.amount_paid_eur} disabled={!editable}
+                        <NumInput value={r.amount_paid_eur} disabled={!podeEscrever}
                                   onChange={n => save(r.item_id, { amount_paid_eur: n })} />
                         {rec && rec.valor > 0 && (
                           <div className="mt-0.5 text-right text-[10px] text-slate-400">
@@ -438,7 +487,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
                         )}
                       </td>
                       <td className="td w-24">
-                        <NumInput value={r.closing_qty} disabled={!editable}
+                        <NumInput value={r.closing_qty} disabled={!podeEscrever}
                                   onChange={n => save(r.item_id, { closing_qty: n })} />
                       </td>
                       <td className={`td text-right tabular-nums ${used < 0 ? 'font-semibold text-red-600' : ''}`}>

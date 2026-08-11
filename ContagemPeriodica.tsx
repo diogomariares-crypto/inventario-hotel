@@ -3,8 +3,8 @@ import { Link } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useApp } from '../lib/appState'
 import {
-  createPeriodAt, fetchCounts, fetchItems, fetchLastPeriod, fetchPeriods,
-  fetchPreviousClosing, fetchReceivedInPeriod, updatePeriod, upsertCount,
+  countRowsIn, createPeriodAt, deletePeriod, fetchCounts, fetchItems, fetchLastPeriod,
+  fetchPeriods, fetchPreviousClosing, fetchReceivedInPeriod, updatePeriod, upsertCount,
 } from '../lib/data'
 import type { Count, Department, Item, Period, PeriodKind } from '../lib/types'
 import { addDays, dmy, lastDayOfMonth, money, qty, todayISO } from '../lib/format'
@@ -33,6 +33,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(0)
   const [nova, setNova] = useState<{ data: string; inicio: string; primeira: boolean } | null>(null)
+  const [editar, setEditar] = useState<{ inicio: string; data: string; linhas: number } | null>(null)
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   const rowsRef = useRef<Record<string, Row>>({})
   rowsRef.current = rows
@@ -164,6 +165,45 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
     } catch (e) { toast((e as Error).message, 'erro') }
   }
 
+  const abrirEditar = async () => {
+    if (!period) return
+    const linhas = await countRowsIn(period.id).catch(() => 0)
+    setEditar({ inicio: period.start_date, data: period.end_date, linhas })
+  }
+
+  const guardarDatas = async () => {
+    if (!editar || !period) return
+    try {
+      await updatePeriod(period.id, {
+        start_date: editar.inicio,
+        end_date: editar.data,
+        label: freq === 'mensal' ? editar.data.slice(0, 7) : editar.data,
+      })
+      const ps = await fetchPeriods(dept, period.hotel_id, freq)
+      setPeriods(ps)
+      setPeriod(ps.find(p => p.id === period.id) ?? null)
+      setEditar(null)
+      toast('Datas atualizadas')
+    } catch (e) { toast((e as Error).message, 'erro') }
+  }
+
+  const apagar = async () => {
+    if (!period || !hotelId) return
+    const linhas = await countRowsIn(period.id).catch(() => 0)
+    const aviso = linhas > 0
+      ? `Esta contagem tem ${linhas} linhas preenchidas. Apagar remove-as definitivamente.\n\nContinuar?`
+      : 'Apagar esta contagem?'
+    if (!confirm(aviso)) return
+    try {
+      await deletePeriod(period.id)
+      const ps = await fetchPeriods(dept, hotelId, freq)
+      setPeriods(ps)
+      setPeriod(ps[0] ?? null)
+      setEditar(null)
+      toast('Contagem apagada')
+    } catch (e) { toast((e as Error).message, 'erro') }
+  }
+
   const submeter = async () => {
     if (!period) return
     const faltam = Object.values(rows).filter(r => !r.closing_counted && !r.id).length
@@ -288,8 +328,22 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
                 {' · '}{Math.round((Date.parse(period.end_date) - Date.parse(period.start_date)) / 86400000) + 1} dias
               </div>
             </div>
-            <div className="text-xs text-slate-500">
-              A próxima contagem começa a {dmy(addDays(period.end_date, 1))}
+            <div className="flex items-center gap-3 text-xs">
+              <span className="text-slate-500">
+                A próxima começa a {dmy(addDays(period.end_date, 1))}
+              </span>
+              {editable && (
+                <>
+                  <button className="font-medium text-brand-600 hover:underline" onClick={abrirEditar}>
+                    editar datas
+                  </button>
+                  {isAdmin && (
+                    <button className="font-medium text-slate-400 hover:text-red-600" onClick={apagar}>
+                      apagar
+                    </button>
+                  )}
+                </>
+              )}
             </div>
           </div>
 
@@ -409,6 +463,48 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
           )}
         </>
       )}
+
+      {/* modal editar datas */}
+      <Modal open={!!editar} onClose={() => setEditar(null)} title="Datas desta contagem">
+        {editar && (
+          <div className="space-y-3">
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div>
+                <label className="label">Primeiro dia do período</label>
+                <input type="date" className="input" value={editar.inicio}
+                       onChange={e => setEditar({ ...editar, inicio: e.target.value })} />
+              </div>
+              <div>
+                <label className="label">Data da contagem</label>
+                <input type="date" className="input" value={editar.data}
+                       onChange={e => setEditar({ ...editar, data: e.target.value })} />
+              </div>
+            </div>
+            {editar.data < editar.inicio && (
+              <div className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700">
+                A data da contagem não pode ser anterior ao início do período.
+              </div>
+            )}
+            <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
+              Alterar estas datas muda que encomendas entram nesta contagem (as que chegaram entre os
+              dois dias) e onde começa a contagem seguinte.
+              {editar.linhas > 0 && ` Já tem ${editar.linhas} linhas preenchidas.`}
+            </p>
+            <div className="flex items-center justify-between pt-1">
+              {isAdmin ? (
+                <button className="text-sm text-red-600 hover:underline" onClick={apagar}>
+                  Apagar contagem
+                </button>
+              ) : <span />}
+              <div className="flex gap-2">
+                <button className="btn-ghost" onClick={() => setEditar(null)}>Cancelar</button>
+                <button className="btn-primary" onClick={guardarDatas}
+                        disabled={editar.data < editar.inicio}>Guardar</button>
+              </div>
+            </div>
+          </div>
+        )}
+      </Modal>
 
       {/* modal nova contagem */}
       <Modal open={!!nova} onClose={() => setNova(null)} title="Nova contagem">

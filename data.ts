@@ -142,7 +142,25 @@ export async function upsertCount(row: Partial<Count> & { period_id: string; ite
 
 export async function updatePeriod(id: string, patch: Partial<Period>) {
   const { error } = await supabase.from('periods').update(patch).eq('id', id)
+  if (error) {
+    if (error.code === '23505') throw new Error('Já existe outra contagem a começar nesse dia.')
+    if (error.code === '23514') throw new Error('A data da contagem não pode ser anterior ao início do período.')
+    throw error
+  }
+}
+
+/** Apaga o período e, com ele, todas as contagens que lhe pertencem. */
+export async function deletePeriod(id: string) {
+  const { error } = await supabase.from('periods').delete().eq('id', id)
   if (error) throw error
+}
+
+/** Quantas linhas de contagem já foram registadas neste período. */
+export async function countRowsIn(periodId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('counts').select('id', { count: 'exact', head: true }).eq('period_id', periodId)
+  if (error) throw error
+  return count ?? 0
 }
 
 /* ------------------------------- Encomendas ------------------------------- */

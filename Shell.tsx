@@ -104,6 +104,9 @@ export default function Shell({ children }: { children: ReactNode }) {
                   >
                     Terminar sessão
                   </button>
+                  <div className="px-2 pt-2 text-[11px] text-slate-400">
+                    Versão {__APP_VERSION__}
+                  </div>
                 </div>
               </>
             )}

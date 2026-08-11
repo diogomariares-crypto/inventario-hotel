@@ -38,7 +38,7 @@ export default function Dashboard() {
     const map: Record<string, { periodo: string; ordem: string; FO?: number; HSK?: number }> = {}
     const porPeriodo: Record<string, { dept: Department; custo: number; quartos: number | null; start: string; end: string }> = {}
     for (const r of rows) {
-      if (r.kind !== 'semanal') continue
+      if (r.kind !== 'semanal' || r.department === 'FB') continue
       const k = r.period_id
       porPeriodo[k] ??= { dept: r.department, custo: 0, quartos: r.occupied_rooms, start: r.start_date, end: r.end_date }
       porPeriodo[k].custo += r.cost_used_eur ?? 0
@@ -257,8 +257,8 @@ function MesesTable({ rows }: { rows: VCount[] }) {
     for (const r of rows) {
       const mes = r.start_date.slice(0, 7)
       map[mes] ??= { mes, FO: 0, HSK: 0, FB: 0, quartos: 0 }
-      if (r.kind === 'semanal') map[mes][r.department as 'FO' | 'HSK'] += r.cost_used_eur ?? 0
-      else map[mes].FB += r.stock_value_eur ?? 0
+      if (r.department === 'FB') map[mes].FB += r.stock_value_eur ?? 0
+      else map[mes][r.department as 'FO' | 'HSK'] += r.cost_used_eur ?? 0
       const k = `${mes}|${r.period_id}`
       if (r.occupied_rooms && !quartosVistos.has(k) && r.department === 'HSK') {
         quartosVistos.add(k)

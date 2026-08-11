@@ -9,6 +9,7 @@ import { Loading, Modal, NumInput, useToast } from '../components/ui'
 const vazio = (dept: Department, hotelId: string | null): Partial<Item> => ({
   department: dept,
   hotel_id: dept === 'FB' ? null : hotelId,
+  count_frequency: dept === 'FB' ? 'mensal' : 'semanal',
   name: '',
   ref: null,
   category: null,
@@ -118,6 +119,7 @@ export default function Itens() {
                 {dept === 'FB' && <th className="th">Ref.</th>}
                 {dept === 'FB' && <th className="th">Categoria</th>}
                 {dept === 'FB' && <th className="th">Fornecedor</th>}
+                {dept !== 'FB' && <th className="th">Contagem</th>}
                 <th className="th">Un.</th>
                 <th className="th text-right">Preço</th>
                 {dept !== 'FB' && <th className="th text-right">Par</th>}
@@ -131,6 +133,14 @@ export default function Itens() {
                   {dept === 'FB' && <td className="td text-slate-500">{i.ref}</td>}
                   {dept === 'FB' && <td className="td text-slate-500">{i.category}</td>}
                   {dept === 'FB' && <td className="td text-slate-500">{i.supplier}</td>}
+                  {dept !== 'FB' && (
+                    <td className="td">
+                      <span className={`chip ${i.count_frequency === 'mensal'
+                        ? 'bg-indigo-100 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                        {i.count_frequency === 'mensal' ? 'mensal' : 'semanal'}
+                      </span>
+                    </td>
+                  )}
                   <td className="td text-slate-500">{i.unit}</td>
                   <td className={`td text-right tabular-nums ${i.unit_price_eur == null ? 'text-amber-600' : ''}`}>
                     {i.unit_price_eur == null ? 'sem preço' : money(Number(i.unit_price_eur))}
@@ -171,6 +181,30 @@ export default function Itens() {
                   <label className="label">Fornecedor</label>
                   <input className="input" value={edit.supplier ?? ''} onChange={e => setEdit({ ...edit, supplier: e.target.value })} />
                 </div>
+              </div>
+            )}
+            {edit.department !== 'FB' && (
+              <div>
+                <label className="label">Periodicidade da contagem</label>
+                <div className="flex gap-2">
+                  {(['semanal', 'mensal'] as const).map(f => (
+                    <button
+                      key={f}
+                      type="button"
+                      onClick={() => setEdit({ ...edit, count_frequency: f })}
+                      className={`flex-1 rounded-lg border px-3 py-2 text-sm font-medium ${
+                        edit.count_frequency === f
+                          ? 'border-brand-500 bg-brand-50 text-brand-700'
+                          : 'border-slate-300 bg-white text-slate-600'}`}
+                    >
+                      {f === 'semanal' ? 'Semanal' : 'Mensal'}
+                    </button>
+                  ))}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">
+                  Define em que lista de contagem este item aparece. Mudar a periodicidade não
+                  altera as contagens já feitas.
+                </p>
               </div>
             )}
             <div className="grid gap-3 sm:grid-cols-3">

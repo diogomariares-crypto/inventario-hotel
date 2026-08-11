@@ -3,7 +3,7 @@ import { useApp } from '../lib/appState'
 import { fetchVCounts } from '../lib/data'
 import type { Department, VCount } from '../lib/types'
 import { DEPARTMENTS } from '../lib/types'
-import { dm, downloadCSV, money, monthLabel, qty } from '../lib/format'
+import { dm, dmy, downloadCSV, money, monthLabel, qty } from '../lib/format'
 import { Empty, Loading } from '../components/ui'
 
 export default function Historico() {
@@ -23,14 +23,15 @@ export default function Historico() {
 
   const periodos = useMemo(() => {
     const map: Record<string, {
-      id: string; label: string; ordem: string; dept: Department
+      id: string; label: string; intervalo: string; ordem: string; dept: Department
       linhas: number; custo: number; stock: number; quartos: number | null; status: string
     }> = {}
     for (const r of rows) {
       map[r.period_id] ??= {
         id: r.period_id,
-        label: r.kind === 'mensal' ? monthLabel(r.label) : `${dm(r.start_date)} – ${dm(r.end_date)}`,
-        ordem: r.start_date,
+        label: r.department === 'FB' ? monthLabel(r.label) : `Contagem de ${dmy(r.end_date)}`,
+        intervalo: `${dm(r.start_date)} – ${dm(r.end_date)}`,
+        ordem: r.end_date,
         dept: r.department,
         linhas: 0, custo: 0, stock: 0,
         quartos: r.occupied_rooms,
@@ -103,7 +104,10 @@ export default function Historico() {
             <tbody className="divide-y divide-slate-100">
               {periodos.map(p => (
                 <tr key={p.id}>
-                  <td className="td font-medium">{p.label}</td>
+                  <td className="td">
+                    <div className="font-medium">{p.label}</div>
+                    <div className="text-xs text-slate-400">período {p.intervalo}</div>
+                  </td>
                   <td className="td">{p.dept}</td>
                   <td className="td text-right tabular-nums">{p.linhas}</td>
                   <td className="td text-right tabular-nums">{p.quartos ?? '—'}</td>

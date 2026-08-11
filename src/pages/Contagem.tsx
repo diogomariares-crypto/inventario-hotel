@@ -1,7 +1,7 @@
 import { useApp } from '../lib/appState'
 import { useAuth } from '../lib/auth'
 import { DEPARTMENTS } from '../lib/types'
-import ContagemSemanal from './ContagemSemanal'
+import ContagemPeriodica from './ContagemPeriodica'
 import ContagemMensal from './ContagemMensal'
 
 export default function Contagem() {
@@ -22,9 +22,7 @@ export default function Contagem() {
             }`}
           >
             {d.label}
-            <span className="ml-1.5 text-[11px] opacity-70">
-              {d.kind === 'mensal' ? 'mensal' : 'semanal'}
-            </span>
+            {d.value === 'FB' && <span className="ml-1.5 text-[11px] opacity-70">mensal</span>}
           </button>
         ))}
       </div>
@@ -37,7 +35,7 @@ export default function Contagem() {
         </div>
       )}
 
-      {dept === 'FB' ? <ContagemMensal /> : <ContagemSemanal dept={dept} />}
+      {dept === 'FB' ? <ContagemMensal /> : <ContagemPeriodica dept={dept} />}
     </div>
   )
 }

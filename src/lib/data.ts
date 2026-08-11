@@ -1,6 +1,8 @@
 import { supabase } from './supabase'
-import type { Count, Department, Hotel, Item, Period, Purchase, StockRow, VCount } from './types'
-import { addDays, lastDayOfMonth, mondayOf } from './format'
+import type {
+  Count, Department, Hotel, Item, Period, PeriodKind, Purchase, StockRow, VCount,
+} from './types'
+import { addDays, lastDayOfMonth } from './format'
 
 export async function fetchHotels(): Promise<Hotel[]> {
   const { data, error } = await supabase.from('hotels').select('*').order('name')
@@ -9,23 +11,67 @@ export async function fetchHotels(): Promise<Hotel[]> {
 }
 
 /** Itens do departamento: FO/HSK são por hotel, F&B é catálogo partilhado. */
-export async function fetchItems(dept: Department, hotelId: string): Promise<Item[]> {
+export async function fetchItems(
+  dept: Department, hotelId: string, freq?: PeriodKind,
+): Promise<Item[]> {
   let q = supabase.from('items').select('*').eq('department', dept).eq('active', true)
   q = dept === 'FB' ? q.is('hotel_id', null) : q.eq('hotel_id', hotelId)
+  if (freq) q = q.eq('count_frequency', freq)
   const { data, error } = await q.order('name')
   if (error) throw error
   return data as Item[]
 }
 
-export async function fetchPeriods(dept: Department, hotelId: string): Promise<Period[]> {
-  const { data, error } = await supabase
-    .from('periods')
-    .select('*')
-    .eq('department', dept)
-    .eq('hotel_id', hotelId)
-    .order('start_date', { ascending: false })
+export async function fetchPeriods(
+  dept: Department, hotelId: string, kind?: PeriodKind,
+): Promise<Period[]> {
+  let q = supabase.from('periods').select('*').eq('department', dept).eq('hotel_id', hotelId)
+  if (kind) q = q.eq('kind', kind)
+  const { data, error } = await q.order('end_date', { ascending: false })
   if (error) throw error
   return data as Period[]
+}
+
+/** Última contagem do mesmo tipo — define onde começa o período seguinte. */
+export async function fetchLastPeriod(
+  dept: Department, hotelId: string, kind: PeriodKind, before?: string,
+): Promise<Period | null> {
+  let q = supabase.from('periods').select('*')
+    .eq('department', dept).eq('hotel_id', hotelId).eq('kind', kind)
+  if (before) q = q.lt('end_date', before)
+  const { data } = await q.order('end_date', { ascending: false }).limit(1).maybeSingle()
+  return (data as Period) ?? null
+}
+
+/**
+ * Cria um período que termina na data da contagem.
+ * O início é sempre o dia seguinte à contagem anterior do mesmo tipo.
+ */
+export async function createPeriodAt(
+  dept: Department, hotelId: string, kind: PeriodKind,
+  countDate: string, startOverride?: string,
+): Promise<Period> {
+  const anterior = await fetchLastPeriod(dept, hotelId, kind, countDate)
+  const start = startOverride
+    ?? (anterior ? addDays(anterior.end_date, 1) : countDate)
+  if (start > countDate) {
+    throw new Error(
+      `A contagem anterior terminou a ${anterior!.end_date}. A data da contagem tem de ser posterior.`,
+    )
+  }
+  const { data, error } = await supabase
+    .from('periods')
+    .insert({
+      hotel_id: hotelId, department: dept, kind,
+      start_date: start, end_date: countDate,
+      label: kind === 'mensal' ? countDate.slice(0, 7) : countDate,
+    })
+    .select().single()
+  if (error) {
+    if (error.code === '23505') throw new Error('Já existe uma contagem que começa nesse dia.')
+    throw error
+  }
+  return data as Period
 }
 
 export async function fetchCounts(periodId: string): Promise<Count[]> {
@@ -34,32 +80,13 @@ export async function fetchCounts(periodId: string): Promise<Count[]> {
   return data as Count[]
 }
 
-/** Cria (ou devolve) a semana que contém a data indicada. */
-export async function ensureWeek(dept: Department, hotelId: string, anyDate: string) {
-  const start = mondayOf(new Date(anyDate + 'T00:00:00'))
-  const end = addDays(start, 6)
-  const { data: existing } = await supabase
-    .from('periods').select('*')
-    .eq('hotel_id', hotelId).eq('department', dept).eq('start_date', start).maybeSingle()
-  if (existing) return existing as Period
-
-  const { data, error } = await supabase
-    .from('periods')
-    .insert({
-      hotel_id: hotelId, department: dept, kind: 'semanal',
-      start_date: start, end_date: end, label: start,
-    })
-    .select().single()
-  if (error) throw error
-  return data as Period
-}
-
 /** Cria (ou devolve) o mês indicado ('2026-08'). */
 export async function ensureMonth(dept: Department, hotelId: string, month: string) {
   const start = `${month}-01`
   const { data: existing } = await supabase
     .from('periods').select('*')
-    .eq('hotel_id', hotelId).eq('department', dept).eq('start_date', start).maybeSingle()
+    .eq('hotel_id', hotelId).eq('department', dept).eq('kind', 'mensal')
+    .eq('start_date', start).maybeSingle()
   if (existing) return existing as Period
 
   const { data, error } = await supabase
@@ -73,20 +100,38 @@ export async function ensureMonth(dept: Department, hotelId: string, month: stri
   return data as Period
 }
 
-/** Inventário final da semana/mês anterior, por item — serve de inventário inicial. */
+/** Inventário final da contagem anterior do mesmo tipo — serve de inventário inicial. */
 export async function fetchPreviousClosing(
-  dept: Department, hotelId: string, beforeDate: string,
+  dept: Department, hotelId: string, kind: PeriodKind, beforeDate: string,
 ): Promise<Record<string, number>> {
   const { data: prev } = await supabase
     .from('periods').select('id')
-    .eq('hotel_id', hotelId).eq('department', dept)
+    .eq('hotel_id', hotelId).eq('department', dept).eq('kind', kind)
     .lt('start_date', beforeDate)
-    .order('start_date', { ascending: false })
+    .order('end_date', { ascending: false })
     .limit(1).maybeSingle()
-  if (!prev) return {}
-  const { data } = await supabase.from('counts').select('item_id, closing_qty').eq('period_id', prev.id)
+
+  if (prev) {
+    const { data } = await supabase.from('counts').select('item_id, closing_qty').eq('period_id', prev.id)
+    const out: Record<string, number> = {}
+    for (const r of data ?? []) out[r.item_id] = Number(r.closing_qty)
+    return out
+  }
+
+  // Primeira contagem deste tipo (por exemplo, um item que passou de semanal a
+  // mensal): usa o último inventário final conhecido, seja de que tipo for.
+  const { data } = await supabase
+    .from('counts')
+    .select('item_id, closing_qty, periods!inner(hotel_id, department, end_date)')
+    .eq('periods.hotel_id', hotelId)
+    .eq('periods.department', dept)
+    .lt('periods.end_date', beforeDate)
+    .order('periods(end_date)', { ascending: false })
+    .limit(4000)
   const out: Record<string, number> = {}
-  for (const r of data ?? []) out[r.item_id] = Number(r.closing_qty)
+  for (const r of (data ?? []) as unknown as { item_id: string; closing_qty: number }[]) {
+    if (!(r.item_id in out)) out[r.item_id] = Number(r.closing_qty)
+  }
   return out
 }
 
@@ -97,7 +142,25 @@ export async function upsertCount(row: Partial<Count> & { period_id: string; ite
 
 export async function updatePeriod(id: string, patch: Partial<Period>) {
   const { error } = await supabase.from('periods').update(patch).eq('id', id)
+  if (error) {
+    if (error.code === '23505') throw new Error('Já existe outra contagem a começar nesse dia.')
+    if (error.code === '23514') throw new Error('A data da contagem não pode ser anterior ao início do período.')
+    throw error
+  }
+}
+
+/** Apaga o período e, com ele, todas as contagens que lhe pertencem. */
+export async function deletePeriod(id: string) {
+  const { error } = await supabase.from('periods').delete().eq('id', id)
   if (error) throw error
+}
+
+/** Quantas linhas de contagem já foram registadas neste período. */
+export async function countRowsIn(periodId: string): Promise<number> {
+  const { count, error } = await supabase
+    .from('counts').select('id', { count: 'exact', head: true }).eq('period_id', periodId)
+  if (error) throw error
+  return count ?? 0
 }
 
 /* ------------------------------- Encomendas ------------------------------- */

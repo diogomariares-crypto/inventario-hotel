@@ -32,6 +32,7 @@ export interface Item {
   id: string
   hotel_id: string | null
   department: Department
+  count_frequency: PeriodKind
   ref: string | null
   name: string
   category: string | null
@@ -92,6 +93,7 @@ export interface StockRow {
   item_id: string
   item_name: string
   department: Department
+  count_frequency: PeriodKind
   unit: string
   par_qty: number | null
   unit_price_eur: number | null
@@ -122,6 +124,7 @@ export interface VCount {
   category: string | null
   supplier: string | null
   unit: string
+  count_frequency: PeriodKind
   unit_price_eur: number | null
   par_qty: number | null
   opening_qty: number

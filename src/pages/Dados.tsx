@@ -186,6 +186,15 @@ HSK;Toucas;2026-08-03;2026-08-09;312;120;0;0;96;0;0,1085</pre>
         />
       </div>
 
+      <div className="card space-y-2 p-4">
+        <h2 className="text-sm font-semibold">Imagens da app antiga</h2>
+        <p className="text-sm text-slate-600">
+          As imagens de feedback da Passagem de Turno ainda estão no armazenamento do Lovable.
+          Esta ferramenta copia-as para o teu Supabase.
+        </p>
+        <a href="#/migrar-imagens" className="btn-ghost w-fit">Abrir ferramenta</a>
+      </div>
+
       {log.length > 0 && (
         <div className="card max-h-72 overflow-y-auto p-4">
           <h2 className="mb-2 text-sm font-semibold">Registo</h2>

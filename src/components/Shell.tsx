@@ -30,8 +30,14 @@ export default function Shell({ children }: { children: ReactNode }) {
   const ativo = moduloDoCaminho(pathname)
   const paginas = ativo.paginas.filter(p => !p.soAdmin || isAdmin)
 
-  const ativoNaPagina = (to: string) =>
+  // Quando várias páginas correspondem (ex.: /turno e /turno/2026-08-24),
+  // só a mais específica fica destacada.
+  const bate = (to: string) =>
     to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/')
+  const maisEspecifica = paginas
+    .filter(p => bate(p.to))
+    .sort((a, b) => b.to.length - a.to.length)[0]?.to
+  const ativoNaPagina = (to: string) => to === maisEspecifica
 
   return (
     <div className="min-h-full">

@@ -77,6 +77,39 @@ export const monthRange = (back = 12, fwd = 1) => {
   return out
 }
 
+export const DIAS_SEMANA = [
+  'Domingo', 'Segunda-feira', 'Terça-feira', 'Quarta-feira',
+  'Quinta-feira', 'Sexta-feira', 'Sábado',
+]
+export const DIAS_CURTOS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb']
+
+/** '2026-08-24' -> 'Segunda-feira, 24 de agosto de 2026' */
+export const dataExtenso = (iso: string) => {
+  const d = new Date(iso + 'T12:00:00')
+  return `${DIAS_SEMANA[d.getDay()]}, ${d.getDate()} de ${MESES[d.getMonth()].toLowerCase()} de ${d.getFullYear()}`
+}
+
+export const diaSemanaCurto = (iso: string) => DIAS_CURTOS[new Date(iso + 'T12:00:00').getDay()]
+export const diaSemanaLongo = (iso: string) =>
+  DIAS_SEMANA[new Date(iso + 'T12:00:00').getDay()].toLowerCase()
+
+/** Segunda-feira da semana de uma data ISO. */
+export const segundaDe = (iso: string) => {
+  const d = new Date(iso + 'T12:00:00')
+  const dow = (d.getDay() + 6) % 7
+  return addDays(iso, -dow)
+}
+
+/** Data de hoje no fuso local (não em UTC). */
+export const hojeLocal = () => {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
+}
+
+export const diffDias = (de: string, ate: string) =>
+  Math.round((Date.parse(ate + 'T00:00:00Z') - Date.parse(de + 'T00:00:00Z')) / 86400000)
+
 export const csvEscape = (v: unknown) => {
   const s = v === null || v === undefined ? '' : String(v)
   return /[",;\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s

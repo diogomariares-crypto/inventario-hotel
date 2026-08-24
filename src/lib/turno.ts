@@ -10,16 +10,33 @@ export const CATEGORIAS_FEEDBACK = [
 ] as const
 
 export const MOTIVOS_VIP = [
-  'Vip 3º Dia', 'Vip 5º Dia', 'Vip Aniversário', 'Vip Suite',
-  'Vip Welcome Back', 'Vip Ocasião Especial',
+  'Vip 3º Dia', 'Vip 5º Dia', 'Vip 7º Dia', 'Vip 9º Dia',
+  'Vip Aniversário', 'Vip Aniversário de Casamento', 'Vip Lua de Mel',
+  'Vip Suite', 'Vip Welcome', 'Vip Welcome Back',
+  'Vip Pack Romântico', 'Vip Ocasião Especial',
 ] as const
 
 export const TIPOS_HSK = ['NI', 'NQ', 'N feito'] as const
 
+/**
+ * Serviços de F&B.
+ *
+ * O `id` é o que está guardado na base de dados desde a app antiga — não pode
+ * mudar, senão os registos deixam de casar. O `label` é só o que se mostra.
+ */
 export const SERVICOS_FB = [
-  'Pequeno-almoço', 'Pensões', 'Delivery (Bolt/UBER)', 'Room Service',
-  'Almoço', 'Jantar', 'Bar', 'VIPS + Lanche',
+  { id: 'pequeno_almoco', label: 'Pequeno-almoço' },
+  { id: 'pensoes',        label: 'Pensões' },
+  { id: 'delivery',       label: 'Delivery (Bolt/UBER)' },
+  { id: 'room_service',   label: 'Room Service' },
+  { id: 'almoco',         label: 'Almoço' },
+  { id: 'jantar',         label: 'Jantar' },
+  { id: 'bar',            label: 'Bar' },
+  { id: 'vips_lanche',    label: 'VIPS + Lanche' },
 ] as const
+
+export const rotuloServico = (id: string) =>
+  SERVICOS_FB.find(s => s.id === id)?.label ?? id
 
 export const OFFSETS_OCUPACAO = [-1, 0, 1, 2, 3, 4, 5, 6] as const
 export const rotuloOffset = (o: number) => (o === -1 ? 'Ontem' : o === 0 ? 'Hoje' : `+${o}`)

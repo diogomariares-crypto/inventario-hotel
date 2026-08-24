@@ -8,6 +8,7 @@ const links = (isAdmin: boolean) => [
   { to: '/', label: 'Painel', icon: '▤' },
   { to: '/contagem', label: 'Contagem', icon: '☑' },
   { to: '/encomendas', label: 'Encomendas', icon: '⇩' },
+  { to: '/turno', label: 'Turno', icon: '⇄' },
   { to: '/historico', label: 'Histórico', icon: '↺' },
   ...(isAdmin
     ? [

@@ -5,6 +5,7 @@ import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import { addDays, dmy, downloadCSV, hojeLocal, money } from '../lib/format'
 import { Badge } from '../components/turno-parts'
+import { rotuloServico } from '../lib/turno'
 import { Loading, useToast } from '../components/ui'
 
 /* ------------------------------- Secções --------------------------------- */
@@ -101,7 +102,7 @@ export const SECCOES: Seccao[] = [
   {
     id: 'fb_numbers', label: 'F&B', tabela: 'fb_numbers',
     campoData: 'report_date', colunas: '*',
-    resumo: r => `${t(r.coluna)}: ${t(r.total_pax)} pax / ${money(Number(r.total_eur ?? 0))}`,
+    resumo: r => `${rotuloServico(String(r.coluna))}: ${t(r.total_pax)} pax / ${money(Number(r.total_eur ?? 0))}`,
   },
 ]
 

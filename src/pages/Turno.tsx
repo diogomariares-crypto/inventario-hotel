@@ -8,7 +8,7 @@ import { useApp } from '../lib/appState'
 import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import {
-  addDays, dataExtenso, diaSemanaLongo, diffDias, dm, dmy, hojeLocal, money, segundaDe,
+  addDays, dataExtenso, diaSemanaLongo, diffDias, dm, dmy, hojeLocal, lastDayOfMonth, money, segundaDe,
   DIAS_CURTOS,
 } from '../lib/format'
 import * as T from '../lib/turno'
@@ -958,7 +958,7 @@ function FeB({
       'hotel_id,report_date,coluna'))
   }
 
-  const totalEur = T.SERVICOS_FB.reduce((s, c) => s + Number(porColuna.get(c)?.total_eur ?? 0), 0)
+  const totalEur = T.SERVICOS_FB.reduce((acc, s) => acc + Number(porColuna.get(s.id)?.total_eur ?? 0), 0)
 
   const linhasPrev: { campo: keyof T.FbForecast; titulo: string }[] = [
     { campo: 'hospedes', titulo: 'Hóspedes' },
@@ -989,7 +989,7 @@ function FeB({
             <thead>
               <tr className="border-b border-slate-100">
                 <Th></Th>
-                {T.SERVICOS_FB.map(s => <Th key={s} right>{s}</Th>)}
+                {T.SERVICOS_FB.map(s => <Th key={s.id} right>{s.label}</Th>)}
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-50">
@@ -999,11 +999,11 @@ function FeB({
                     {campo === 'ins' ? "IN's" : "OUT's"}
                   </Td>
                   {T.SERVICOS_FB.map(s => (
-                    <Td key={s} className="w-24">
+                    <Td key={s.id} className="w-24">
                       <NumeroCell
-                        valor={porColuna.get(s)?.[campo] ?? 0} vazioComoZero
+                        valor={porColuna.get(s.id)?.[campo] ?? 0} vazioComoZero
                         disabled={!ctx.podeEditar}
-                        onGuardar={v => guardarNum(s, { [campo]: v ?? 0 })}
+                        onGuardar={v => guardarNum(s.id, { [campo]: v ?? 0 })}
                       />
                     </Td>
                   ))}
@@ -1012,9 +1012,9 @@ function FeB({
               <tr className="bg-purple-50 font-semibold">
                 <Td className="py-2 text-sm text-slate-700">Total (PAX)</Td>
                 {T.SERVICOS_FB.map(s => {
-                  const n = porColuna.get(s)
+                  const n = porColuna.get(s.id)
                   return (
-                    <Td key={s} className="py-2 text-right text-sm tabular-nums">
+                    <Td key={s.id} className="py-2 text-right text-sm tabular-nums">
                       {(n?.ins ?? 0) + (n?.outs ?? 0)}
                     </Td>
                   )
@@ -1023,11 +1023,11 @@ function FeB({
               <tr className="bg-purple-50/60 font-semibold">
                 <Td className="py-2 text-sm text-slate-700">Total (€)</Td>
                 {T.SERVICOS_FB.map(s => (
-                  <Td key={s} className="w-28">
+                  <Td key={s.id} className="w-28">
                     <NumeroCell
-                      valor={porColuna.get(s)?.total_eur ?? 0} passo={0.01} vazioComoZero
+                      valor={porColuna.get(s.id)?.total_eur ?? 0} passo={0.01} vazioComoZero
                       disabled={!ctx.podeEditar}
-                      onGuardar={v => guardarNum(s, { total_eur: v ?? 0 })}
+                      onGuardar={v => guardarNum(s.id, { total_eur: v ?? 0 })}
                     />
                   </Td>
                 ))}
@@ -1035,10 +1035,10 @@ function FeB({
               <tr>
                 <Td className="py-2 text-sm font-medium text-slate-700">Média (€/PAX)</Td>
                 {T.SERVICOS_FB.map(s => {
-                  const n = porColuna.get(s)
+                  const n = porColuna.get(s.id)
                   const pax = (n?.ins ?? 0) + (n?.outs ?? 0)
                   return (
-                    <Td key={s} className="py-2 text-right text-sm tabular-nums text-slate-500">
+                    <Td key={s.id} className="py-2 text-right text-sm tabular-nums text-slate-500">
                       {pax ? (Number(n?.total_eur ?? 0) / pax).toFixed(2) : '—'}
                     </Td>
                   )
@@ -1111,10 +1111,8 @@ function ResumoSemana({ ctx }: { ctx: Ctx }) {
 
   useEffect(() => {
     setLinhas(null)
-    const mesInicio = ctx.dia.slice(0, 8) + '01'
-    const mesFim = addDays(new Date(
-      Number(ctx.dia.slice(0, 4)), Number(ctx.dia.slice(5, 7)), 1,
-    ).toISOString().slice(0, 10), -1)
+    const mesInicio = `${ctx.dia.slice(0, 7)}-01`
+    const mesFim = lastDayOfMonth(ctx.dia.slice(0, 7))
     Promise.all([
       T.fetchFbSemana(ctx.hotelId, inicio, fim),
       T.fetchFbSemana(ctx.hotelId, mesInicio, mesFim),
@@ -1156,13 +1154,13 @@ function ResumoSemana({ ctx }: { ctx: Ctx }) {
         </thead>
         <tbody className="divide-y divide-slate-50">
           {T.SERVICOS_FB.map(s => {
-            const sem = dias.map(d => cel(s, d))
+            const sem = dias.map(d => cel(s.id, d))
             const totSem = sem.reduce((a, c) => ({ pax: a.pax + c.pax, eur: a.eur + c.eur }), { pax: 0, eur: 0 })
-            const totMes = mes.filter(l => l.coluna === s)
+            const totMes = mes.filter(l => l.coluna === s.id)
               .reduce((a, l) => ({ pax: a.pax + l.total_pax, eur: a.eur + Number(l.total_eur) }), { pax: 0, eur: 0 })
             return (
-              <tr key={s}>
-                <Td className="py-2 text-sm text-slate-700">{s}</Td>
+              <tr key={s.id}>
+                <Td className="py-2 text-sm text-slate-700">{s.label}</Td>
                 {sem.map((c, i) => (
                   <Td key={i} className="py-2 text-right text-xs tabular-nums">
                     {c.pax || c.eur ? (
@@ -1183,7 +1181,7 @@ function ResumoSemana({ ctx }: { ctx: Ctx }) {
             <Td className="py-2 text-sm">Total dia</Td>
             {dias.map(d => {
               const t = T.SERVICOS_FB.reduce((a, s) => {
-                const c = cel(s, d); return { pax: a.pax + c.pax, eur: a.eur + c.eur }
+                const c = cel(s.id, d); return { pax: a.pax + c.pax, eur: a.eur + c.eur }
               }, { pax: 0, eur: 0 })
               return (
                 <Td key={d} className="py-2 text-right text-xs tabular-nums">

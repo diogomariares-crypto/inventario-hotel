@@ -31,6 +31,7 @@ export const MODULOS: Modulo[] = [
     icone: '⇄',
     paginas: [
       { to: '/turno', label: 'Relatório diário' },
+      { to: '/turno-historico', label: 'Histórico' },
     ],
   },
   {

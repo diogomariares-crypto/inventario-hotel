@@ -11,6 +11,8 @@
 export interface Pagina {
   to: string
   label: string
+  /** Só visível para administradores. */
+  soAdmin?: boolean
 }
 
 export interface Modulo {
@@ -40,6 +42,8 @@ export const MODULOS: Modulo[] = [
       { to: '/contagem', label: 'Contagem' },
       { to: '/encomendas', label: 'Encomendas' },
       { to: '/historico', label: 'Histórico' },
+      { to: '/itens', label: 'Itens', soAdmin: true },
+      { to: '/dados', label: 'Importar/Exportar', soAdmin: true },
     ],
   },
   {
@@ -48,9 +52,7 @@ export const MODULOS: Modulo[] = [
     icone: '⛭',
     soAdmin: true,
     paginas: [
-      { to: '/itens', label: 'Itens' },
       { to: '/utilizadores', label: 'Utilizadores' },
-      { to: '/dados', label: 'Importar/Exportar' },
       { to: '/migrar-imagens', label: 'Migrar imagens' },
     ],
   },

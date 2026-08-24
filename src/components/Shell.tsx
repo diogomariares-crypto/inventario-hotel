@@ -1,65 +1,60 @@
-import { NavLink, useNavigate } from 'react-router-dom'
+import { NavLink, useLocation, useNavigate } from 'react-router-dom'
 import { useAuth } from '../lib/auth'
 import { useApp } from '../lib/appState'
+import { MODULOS, moduloDoCaminho } from '../lib/modulos'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
-
-const links = (isAdmin: boolean) => [
-  { to: '/', label: 'Painel', icon: '▤' },
-  { to: '/contagem', label: 'Contagem', icon: '☑' },
-  { to: '/encomendas', label: 'Encomendas', icon: '⇩' },
-  { to: '/turno', label: 'Turno', icon: '⇄' },
-  { to: '/historico', label: 'Histórico', icon: '↺' },
-  ...(isAdmin
-    ? [
-        { to: '/itens', label: 'Itens', icon: '⛭' },
-        { to: '/utilizadores', label: 'Utilizadores', icon: '☺' },
-        { to: '/dados', label: 'Importar/Exportar', icon: '⇅' },
-      ]
-    : []),
-]
 
 export default function Shell({ children }: { children: ReactNode }) {
   const { isAdmin, email, fullName, roles, signOut } = useAuth()
   const { hotels, hotelId, setHotelId } = useApp()
   const nav = useNavigate()
+  const { pathname } = useLocation()
   const [menu, setMenu] = useState(false)
-  const items = links(isAdmin)
+
+  const modulos = MODULOS.filter(m => !m.soAdmin || isAdmin)
+  const ativo = moduloDoCaminho(pathname)
+  const paginas = ativo.paginas
+
+  const ativoNaPagina = (to: string) =>
+    to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/')
 
   return (
     <div className="min-h-full">
       <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+        {/* linha 1: identidade, hotel, módulos, conta */}
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-2.5 sm:px-5">
-          <div className="flex items-center gap-2">
-            <div className="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-sm font-bold text-white">I</div>
-            <span className="hidden text-sm font-semibold sm:block">Inventário Hotel</span>
+          <div className="flex shrink-0 items-center gap-2">
+            <div className="grid h-8 w-8 place-items-center rounded-lg bg-brand-500 text-sm font-bold text-white">
+              cb
+            </div>
+            <span className="hidden text-sm font-semibold lg:block">Operações</span>
           </div>
 
           <select
-            className="input h-9 w-auto max-w-[46vw] py-1 text-sm"
+            className="input h-9 w-auto max-w-[42vw] py-1 text-sm"
             value={hotelId ?? ''}
             onChange={e => setHotelId(e.target.value)}
           >
-            {hotels.map(h => (
-              <option key={h.id} value={h.id}>{h.name}</option>
-            ))}
+            {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
           </select>
 
-          <nav className="ml-auto hidden items-center gap-1 md:flex">
-            {items.map(l => (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                end={l.to === '/'}
-                className={({ isActive }) =>
-                  `rounded-lg px-3 py-1.5 text-sm font-medium ${
-                    isActive ? 'bg-brand-50 text-brand-700' : 'text-slate-600 hover:bg-slate-100'
-                  }`
-                }
-              >
-                {l.label}
-              </NavLink>
-            ))}
+          {/* separadores de módulo */}
+          <nav className="ml-auto hidden items-center gap-1 rounded-xl bg-slate-100 p-1 md:flex">
+            {modulos.map(m => {
+              const sel = m.id === ativo.id
+              return (
+                <button
+                  key={m.id}
+                  onClick={() => nav(m.paginas[0].to)}
+                  className={`rounded-lg px-3.5 py-1.5 text-sm font-medium transition ${
+                    sel ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  <span className="mr-1.5 opacity-70">{m.icone}</span>{m.label}
+                </button>
+              )
+            })}
           </nav>
 
           <div className="relative ml-auto md:ml-0">
@@ -86,18 +81,6 @@ export default function Shell({ children }: { children: ReactNode }) {
                       ))}
                     </div>
                   </div>
-                  <div className="my-1 border-t border-slate-100 md:hidden" />
-                  <div className="md:hidden">
-                    {items.map(l => (
-                      <button
-                        key={l.to}
-                        onClick={() => { setMenu(false); nav(l.to) }}
-                        className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100"
-                      >
-                        {l.label}
-                      </button>
-                    ))}
-                  </div>
                   <div className="my-1 border-t border-slate-100" />
                   <button
                     onClick={signOut}
@@ -113,26 +96,48 @@ export default function Shell({ children }: { children: ReactNode }) {
             )}
           </div>
         </div>
+
+        {/* linha 2: páginas do módulo ativo */}
+        {paginas.length > 1 && (
+          <div className="mx-auto max-w-7xl px-3 sm:px-5">
+            <nav className="flex gap-1 overflow-x-auto">
+              {paginas.map(p => (
+                <NavLink
+                  key={p.to}
+                  to={p.to}
+                  className={`shrink-0 border-b-2 px-3 py-2 text-sm font-medium transition ${
+                    ativoNaPagina(p.to)
+                      ? 'border-brand-500 text-brand-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'
+                  }`}
+                >
+                  {p.label}
+                </NavLink>
+              ))}
+            </nav>
+          </div>
+        )}
       </header>
 
       <main className="mx-auto max-w-7xl px-3 py-4 pb-24 sm:px-5 sm:py-6">{children}</main>
 
+      {/* telemóvel: os módulos em baixo */}
       <nav className="fixed bottom-0 z-30 flex w-full border-t border-slate-200 bg-white md:hidden">
-        {items.slice(0, 4).map(l => (
-          <NavLink
-            key={l.to}
-            to={l.to}
-            end={l.to === '/'}
-            className={({ isActive }) =>
-              `flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
-                isActive ? 'text-brand-600' : 'text-slate-500'
-              }`
-            }
-          >
-            <span className="text-base leading-none">{l.icon}</span>
-            {l.label}
-          </NavLink>
-        ))}
+        {modulos.map(m => {
+          const sel = m.id === ativo.id
+          return (
+            <button
+              key={m.id}
+              onClick={() => nav(m.paginas[0].to)}
+              className={`flex flex-1 flex-col items-center gap-0.5 py-2 text-[11px] font-medium ${
+                sel ? 'text-brand-600' : 'text-slate-500'
+              }`}
+            >
+              <span className="text-base leading-none">{m.icone}</span>
+              {m.label}
+            </button>
+          )
+        })}
       </nav>
     </div>
   )

@@ -8,6 +8,8 @@ import Dashboard from './pages/Dashboard'
 import Contagem from './pages/Contagem'
 import Encomendas from './pages/Encomendas'
 import Historico from './pages/Historico'
+import Turno from './pages/Turno'
+import MigrarImagens from './pages/MigrarImagens'
 import Itens from './pages/Itens'
 import Utilizadores from './pages/Utilizadores'
 import Dados from './pages/Dados'
@@ -45,10 +47,13 @@ function Interior() {
         <Route path="/" element={<Dashboard />} />
         <Route path="/contagem" element={<Contagem />} />
         <Route path="/encomendas" element={<Encomendas />} />
+        <Route path="/turno" element={<Turno />} />
+        <Route path="/turno/:date" element={<Turno />} />
         <Route path="/historico" element={<Historico />} />
         <Route path="/itens" element={<SoAdmin><Itens /></SoAdmin>} />
         <Route path="/utilizadores" element={<SoAdmin><Utilizadores /></SoAdmin>} />
         <Route path="/dados" element={<SoAdmin><Dados /></SoAdmin>} />
+        <Route path="/migrar-imagens" element={<SoAdmin><MigrarImagens /></SoAdmin>} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </Shell>

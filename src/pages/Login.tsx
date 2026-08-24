@@ -47,9 +47,9 @@ export default function Login() {
     <div className="flex min-h-full items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="mb-6 text-center">
-          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-xl font-bold text-white">I</div>
-          <h1 className="mt-3 text-xl font-semibold">Inventário Hotel</h1>
-          <p className="text-sm text-slate-500">F&amp;B · Front Office · Housekeeping</p>
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-500 text-lg font-bold text-white">cb</div>
+          <h1 className="mt-3 text-xl font-semibold">Operações</h1>
+          <p className="text-sm text-slate-500">Turnos · Inventário · chic&amp;basic</p>
         </div>
 
         <form onSubmit={submit} className="card space-y-3 p-5">

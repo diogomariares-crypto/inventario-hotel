@@ -3,7 +3,7 @@ import { useAuth } from '../lib/auth'
 import { useApp } from '../lib/appState'
 import { MODULOS, moduloDoCaminho } from '../lib/modulos'
 import type { ReactNode } from 'react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 export default function Shell({ children }: { children: ReactNode }) {
   const { isAdmin, email, fullName, roles, signOut } = useAuth()
@@ -11,17 +11,31 @@ export default function Shell({ children }: { children: ReactNode }) {
   const nav = useNavigate()
   const { pathname } = useLocation()
   const [menu, setMenu] = useState(false)
+  const cabecalho = useRef<HTMLElement>(null)
+
+  // Publica a altura do cabeçalho para as páginas poderem fixar barras por baixo dele.
+  useEffect(() => {
+    const el = cabecalho.current
+    if (!el) return
+    const medir = () =>
+      document.documentElement.style.setProperty('--cab-h', `${el.offsetHeight}px`)
+    medir()
+    const obs = new ResizeObserver(medir)
+    obs.observe(el)
+    window.addEventListener('resize', medir)
+    return () => { obs.disconnect(); window.removeEventListener('resize', medir) }
+  }, [])
 
   const modulos = MODULOS.filter(m => !m.soAdmin || isAdmin)
   const ativo = moduloDoCaminho(pathname)
-  const paginas = ativo.paginas
+  const paginas = ativo.paginas.filter(p => !p.soAdmin || isAdmin)
 
   const ativoNaPagina = (to: string) =>
     to === '/' ? pathname === '/' : pathname === to || pathname.startsWith(to + '/')
 
   return (
     <div className="min-h-full">
-      <header className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <header ref={cabecalho} className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
         {/* linha 1: identidade, hotel, módulos, conta */}
         <div className="mx-auto flex max-w-7xl items-center gap-3 px-3 py-2.5 sm:px-5">
           <div className="flex shrink-0 items-center gap-2">

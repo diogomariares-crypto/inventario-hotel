@@ -20,6 +20,16 @@ import { Loading, Modal, useToast } from '../components/ui'
 
 /* ========================================================================== */
 
+const ABAS = [
+  { id: 'resumo', label: 'Ocupação & Feedback', contador: '' },
+  { id: 'hospedes', label: 'Hóspedes', contador: 'hospedes' },
+  { id: 'pendentes', label: 'Pendentes', contador: 'pendentes' },
+  { id: 'fb', label: 'F&B', contador: '' },
+  { id: 'chegadas', label: 'Chegadas', contador: 'chegadas' },
+] as const
+
+const ABA_GUARDADA = 'turno.aba'
+
 export default function Turno() {
   const { date } = useParams()
   const nav = useNavigate()
@@ -40,6 +50,10 @@ export default function Turno() {
   } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [aCarregar, setACarregar] = useState(true)
+  const [aba, setAbaEstado] = useState<string>(
+    () => localStorage.getItem(ABA_GUARDADA) ?? 'resumo',
+  )
+  const setAba = (id: string) => { localStorage.setItem(ABA_GUARDADA, id); setAbaEstado(id) }
 
   const carregar = useCallback(async () => {
     if (!hotelId) return
@@ -79,6 +93,22 @@ export default function Turno() {
 
   useEffect(() => { setACarregar(true); carregar() }, [carregar])
 
+  const contagens = useMemo(() => {
+    if (!dados) return null
+    return {
+      hospedes: dados.vips.length
+        + dados.breakfast.filter(b => !b.pedida).length
+        + dados.transfers.filter(t => !t.concluido).length,
+      pendentes: dados.pendentes.filter(p => !p.resolvido).length
+        + dados.hsk.filter(h => !h.resolvido).length
+        + dados.perdidos.filter(p => !p.resolvido).length
+        + dados.emprestados.filter(b => !b.resolvido).length
+        + dados.manutencao.filter(m => m.status !== 'resolvido').length
+        + dados.reclamacoes.filter(c => c.status !== 'fechada').length,
+      chegadas: dados.chegadasHoje.length,
+    }
+  }, [dados])
+
   const ctx = useMemo(() => ({
     hotelId: hotelId!, dia, podeEditar, quem: email,
     recarregar: carregar,
@@ -91,21 +121,50 @@ export default function Turno() {
 
   return (
     <div className="space-y-4">
-      {/* ------------------------------ cabeçalho ------------------------------ */}
-      <div className="card flex flex-wrap items-center gap-2 p-3">
-        <button className="btn-ghost px-2.5" title="Dia anterior"
-                onClick={() => nav(`/turno/${addDays(dia, -1)}`)}>‹</button>
-        <input
-          type="date" className="input w-auto" value={dia}
-          onChange={e => e.target.value && nav(`/turno/${e.target.value}`)}
-        />
-        <button className="btn-ghost px-2.5" title="Dia seguinte"
-                onClick={() => nav(`/turno/${addDays(dia, 1)}`)}>›</button>
-        <button className="btn-ghost" onClick={() => nav(`/turno/${hojeLocal()}`)}>Hoje</button>
-        <div className="ml-auto text-right">
-          <div className="text-sm font-semibold text-slate-800">{hotel?.name}</div>
-          <div className="text-xs text-slate-500">{dataExtenso(dia)}</div>
+      {/* ---------- barra fixa: dia em que se está + separadores ---------- */}
+      <div
+        className="sticky z-20 -mx-3 border-b border-slate-200 bg-[#f6f7f8]/95 px-3 pt-2 backdrop-blur sm:-mx-5 sm:px-5"
+        style={{ top: 'var(--cab-h, 57px)' }}
+      >
+        <div className="flex flex-wrap items-center gap-2 pb-2">
+          <button className="btn-ghost px-2.5" title="Dia anterior"
+                  onClick={() => nav(`/turno/${addDays(dia, -1)}`)}>‹</button>
+          <input
+            type="date" className="input w-auto" value={dia}
+            onChange={e => e.target.value && nav(`/turno/${e.target.value}`)}
+          />
+          <button className="btn-ghost px-2.5" title="Dia seguinte"
+                  onClick={() => nav(`/turno/${addDays(dia, 1)}`)}>›</button>
+          <button className="btn-ghost" onClick={() => nav(`/turno/${hojeLocal()}`)}>Hoje</button>
+          <div className="ml-auto text-right">
+            <div className="text-sm font-semibold text-slate-800">{hotel?.name}</div>
+            <div className="text-xs text-slate-500">{dataExtenso(dia)}</div>
+          </div>
         </div>
+
+        <nav className="flex gap-1 overflow-x-auto">
+          {ABAS.map(a => {
+            const n = contagens?.[a.contador as keyof typeof contagens]
+            const sel = aba === a.id
+            return (
+              <button
+                key={a.id}
+                onClick={() => setAba(a.id)}
+                className={`flex shrink-0 items-center gap-1.5 border-b-2 px-3 py-2 text-sm font-medium transition ${
+                  sel ? 'border-brand-500 text-brand-700'
+                      : 'border-transparent text-slate-500 hover:text-slate-800'}`}
+              >
+                {a.label}
+                {!!n && (
+                  <span className={`rounded-full px-1.5 py-0.5 text-[10px] font-semibold ${
+                    sel ? 'bg-brand-100 text-brand-700' : 'bg-slate-200 text-slate-600'}`}>
+                    {n}
+                  </span>
+                )}
+              </button>
+            )
+          })}
+        </nav>
       </div>
 
       {!podeEditar && (
@@ -118,19 +177,33 @@ export default function Turno() {
       )}
 
       {aCarregar || !dados ? <Loading /> : (
-        <>
-          <Ocupacao ctx={ctx} linhas={dados.ocupacao} />
-          <Feedback ctx={ctx} feedback={dados.feedback} imagens={dados.imagens} />
-          <Vips ctx={ctx} linhas={dados.vips} />
-          <Pendentes ctx={ctx} linhas={dados.pendentes} />
-          <Transfers ctx={ctx} linhas={dados.transfers} />
-          <Breakfast ctx={ctx} linhas={dados.breakfast} />
-          <Relevantes ctx={ctx} hsk={dados.hsk} perdidos={dados.perdidos} emprestados={dados.emprestados} />
-          <FeB ctx={ctx} numeros={dados.fbNum} previsao={dados.fbPrev} />
-          <Manutencao ctx={ctx} linhas={dados.manutencao} />
-          <Reclamacoes ctx={ctx} linhas={dados.reclamacoes} />
-          <Chegadas ctx={ctx} hoje={dados.chegadasHoje} amanha={dados.chegadasAmanha} />
-        </>
+        <div className="space-y-4">
+          {aba === 'resumo' && (
+            <>
+              <Ocupacao ctx={ctx} linhas={dados.ocupacao} />
+              <Feedback ctx={ctx} feedback={dados.feedback} imagens={dados.imagens} />
+            </>
+          )}
+          {aba === 'hospedes' && (
+            <>
+              <Vips ctx={ctx} linhas={dados.vips} />
+              <Transfers ctx={ctx} linhas={dados.transfers} />
+              <Breakfast ctx={ctx} linhas={dados.breakfast} />
+            </>
+          )}
+          {aba === 'pendentes' && (
+            <>
+              <Pendentes ctx={ctx} linhas={dados.pendentes} />
+              <Relevantes ctx={ctx} hsk={dados.hsk} perdidos={dados.perdidos} emprestados={dados.emprestados} />
+              <Manutencao ctx={ctx} linhas={dados.manutencao} />
+              <Reclamacoes ctx={ctx} linhas={dados.reclamacoes} />
+            </>
+          )}
+          {aba === 'fb' && <FeB ctx={ctx} numeros={dados.fbNum} previsao={dados.fbPrev} />}
+          {aba === 'chegadas' && (
+            <Chegadas ctx={ctx} hoje={dados.chegadasHoje} amanha={dados.chegadasAmanha} />
+          )}
+        </div>
       )}
     </div>
   )
@@ -290,7 +363,9 @@ function Feedback({
 
   return (
     <Seccao cor={CORES.feedback} titulo="Feedback dos hóspedes">
-      <Tabela min={620}>
+      {/* largura contida: sem isto as notas afastam-se demais das categorias */}
+      <div className="max-w-2xl overflow-x-auto">
+      <table className="w-full" style={{ minWidth: 520 }}>
         <thead>
           <tr className="border-b border-slate-100">
             <Th>Categoria</Th>
@@ -324,7 +399,8 @@ function Feedback({
             )
           })}
         </tbody>
-      </Tabela>
+      </table>
+      </div>
 
       <div ref={zona} tabIndex={-1} className="mt-4 border-t border-slate-100 pt-3 outline-none">
         <div className="mb-2 flex flex-wrap items-center gap-2">

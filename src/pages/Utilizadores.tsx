@@ -16,7 +16,8 @@ const TODOS: { role: AppRole; label: string; desc: string }[] = [
   { role: 'admin', label: 'Administrador', desc: 'tudo, incluindo itens, preços e contas' },
   { role: 'fo', label: 'Front Office', desc: 'contagens FO e operação diária' },
   { role: 'hsk', label: 'Housekeeping', desc: 'contagens HSK e operação diária' },
-  { role: 'fb', label: 'F&B', desc: 'contagens do restaurante e operação diária' },
+  { role: 'fb', label: 'F&B', desc: 'contagens do restaurante e faturação diária' },
+  { role: 'financeiro', label: 'Financeiro', desc: 'painel de faturação e números do negócio' },
 ]
 
 export default function Utilizadores() {

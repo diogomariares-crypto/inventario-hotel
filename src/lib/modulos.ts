@@ -35,6 +35,15 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
+    id: 'fb',
+    label: 'Faturação F&B',
+    icone: '€',
+    paginas: [
+      { to: '/fb', label: 'Dia' },
+      { to: '/fb-importar', label: 'Importar Valentinas', soAdmin: true },
+    ],
+  },
+  {
     id: 'parque',
     label: 'Parque',
     icone: '⬓',

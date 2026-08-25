@@ -35,6 +35,14 @@ export const MODULOS: Modulo[] = [
     ],
   },
   {
+    id: 'parque',
+    label: 'Parque',
+    icone: '⬓',
+    paginas: [
+      { to: '/parque', label: 'Mapa' },
+    ],
+  },
+  {
     id: 'inventario',
     label: 'Inventário',
     icone: '▤',
@@ -70,5 +78,5 @@ export function moduloDoCaminho(caminho: string): Modulo {
       }
     }
   }
-  return melhor?.modulo ?? MODULOS[1]
+  return melhor?.modulo ?? MODULOS.find(m => m.id === 'inventario') ?? MODULOS[0]
 }

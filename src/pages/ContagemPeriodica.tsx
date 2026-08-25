@@ -211,8 +211,28 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
 
   const submeter = async () => {
     if (!period) return
-    const faltam = Object.values(rows).filter(r => !r.closing_counted && !r.id).length
-    if (faltam && !confirm(`${faltam} itens ainda sem contagem. Fechar na mesma?`)) return
+    // Itens que ninguém chegou a tocar: como o inventário final aparece a zero
+    // por omissão, "contei zero" e "não contei" ficavam indistinguíveis e a
+    // linha nunca era gravada. Ao fechar, materializamos o que está no ecrã.
+    const porGravar = Object.values(rowsRef.current).filter(r => !r.id)
+    if (porGravar.length) {
+      const ok = confirm(
+        `${porGravar.length} ${porGravar.length === 1 ? 'item ainda não foi tocado' : 'itens ainda não foram tocados'}.\n\n` +
+        'Ao fechar, ficam registados com os valores que estão no ecrã — ' +
+        'inventário final a zero, se for esse o caso.\n\nFechar a contagem?',
+      )
+      if (!ok) return
+      const { error } = await supabase.from('counts').upsert(
+        porGravar.map(r => ({
+          period_id: period.id, item_id: r.item_id,
+          opening_qty: r.opening_qty, purchased_qty: r.purchased_qty,
+          amount_paid_eur: r.amount_paid_eur, closing_qty: r.closing_qty,
+          closing_counted: true, updated_by: email,
+        })),
+        { onConflict: 'period_id,item_id' },
+      )
+      if (error) { toast(error.message, 'erro'); return }
+    }
     await updatePeriod(period.id, { status: 'submetido', submitted_at: new Date().toISOString() })
     setPeriod({ ...period, status: 'submetido' })
     setPeriods(ps => ps.map(p => (p.id === period.id ? { ...p, status: 'submetido' } : p)))
@@ -450,9 +470,16 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
                   const price = r.item.unit_price_eur == null ? null : Number(r.item.unit_price_eur)
                   const cost = price == null ? null : used * price
                   return (
-                    <tr key={r.item_id} className={used < 0 ? 'bg-red-50/60' : ''}>
+                    <tr key={r.item_id} className={
+                      used < 0 ? 'bg-red-50/60'
+                        : (!r.id && !fechada) ? 'border-l-4 border-l-amber-300' : ''}>
                       <td className="td">
-                        <div className="font-medium text-slate-800">{r.item.name}</div>
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="font-medium text-slate-800">{r.item.name}</span>
+                          {!r.id && !fechada && (
+                            <span className="chip bg-amber-100 text-amber-800">por contar</span>
+                          )}
+                        </div>
                         <div className="text-xs text-slate-400">
                           {price == null ? 'sem preço' : `${money(price)} / ${r.item.unit}`}
                         </div>

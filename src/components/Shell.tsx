@@ -6,7 +6,7 @@ import type { ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
 export default function Shell({ children }: { children: ReactNode }) {
-  const { isAdmin, podeVerPainel, email, fullName, roles, signOut } = useAuth()
+  const { isAdmin, podeVerPainel, podeVerPa, email, fullName, roles, signOut } = useAuth()
   const { hotels, hotelId, setHotelId } = useApp()
   const nav = useNavigate()
   const { pathname } = useLocation()
@@ -29,7 +29,7 @@ export default function Shell({ children }: { children: ReactNode }) {
   const modulos = MODULOS.filter(m => !m.soAdmin || isAdmin)
   const ativo = moduloDoCaminho(pathname)
   const paginas = ativo.paginas.filter(
-    p => (!p.soAdmin || isAdmin) && (!p.soPainel || podeVerPainel),
+    p => (!p.soAdmin || isAdmin) && (!p.soPainel || podeVerPainel) && (!p.soPa || podeVerPa),
   )
 
   // Quando várias páginas correspondem (ex.: /turno e /turno/2026-08-24),

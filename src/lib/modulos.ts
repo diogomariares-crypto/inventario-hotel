@@ -40,6 +40,7 @@ export const MODULOS: Modulo[] = [
     icone: '€',
     paginas: [
       { to: '/fb', label: 'Dia' },
+      { to: '/fb-painel', label: 'Painel' },
       { to: '/fb-importar', label: 'Importar Valentinas', soAdmin: true },
     ],
   },

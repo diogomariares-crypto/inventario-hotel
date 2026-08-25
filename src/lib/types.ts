@@ -1,5 +1,5 @@
 export type Department = 'FO' | 'HSK' | 'FB'
-export type AppRole = 'admin' | 'fo' | 'hsk' | 'fb'
+export type AppRole = 'admin' | 'fo' | 'hsk' | 'fb' | 'financeiro'
 export type PeriodKind = 'semanal' | 'mensal'
 export type CountStatus = 'rascunho' | 'submetido'
 

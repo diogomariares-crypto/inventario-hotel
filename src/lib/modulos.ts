@@ -13,6 +13,8 @@ export interface Pagina {
   label: string
   /** Só visível para administradores. */
   soAdmin?: boolean
+  /** Só visível a quem pode ver números do negócio (admin ou financeiro). */
+  soPainel?: boolean
 }
 
 export interface Modulo {
@@ -40,7 +42,7 @@ export const MODULOS: Modulo[] = [
     icone: '€',
     paginas: [
       { to: '/fb', label: 'Dia' },
-      { to: '/fb-painel', label: 'Painel' },
+      { to: '/fb-painel', label: 'Painel', soPainel: true },
       { to: '/fb-importar', label: 'Importar Valentinas', soAdmin: true },
     ],
   },

@@ -10,6 +10,7 @@ import Encomendas from './pages/Encomendas'
 import Historico from './pages/Historico'
 import Turno from './pages/Turno'
 import TurnoHistorico from './pages/TurnoHistorico'
+import Parque from './pages/Parque'
 import MigrarImagens from './pages/MigrarImagens'
 import Conta from './pages/Conta'
 import DesafioMfa from './pages/Mfa'
@@ -54,6 +55,7 @@ function Interior() {
         <Route path="/turno" element={<Turno />} />
         <Route path="/turno/:date" element={<Turno />} />
         <Route path="/turno-historico" element={<TurnoHistorico />} />
+        <Route path="/parque" element={<Parque />} />
         <Route path="/conta" element={<Conta />} />
         <Route path="/historico" element={<Historico />} />
         <Route path="/itens" element={<SoAdmin><Itens /></SoAdmin>} />

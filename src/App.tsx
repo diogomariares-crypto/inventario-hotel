@@ -27,6 +27,11 @@ function SoAdmin({ children }: { children: React.ReactNode }) {
   return isAdmin ? <>{children}</> : <Navigate to="/" replace />
 }
 
+function SoPainel({ children }: { children: React.ReactNode }) {
+  const { podeVerPainel } = useAuth()
+  return podeVerPainel ? <>{children}</> : <Navigate to="/" replace />
+}
+
 function Interior() {
   const { ready, error, hotels } = useApp()
   if (!ready) return <Loading />
@@ -60,7 +65,7 @@ function Interior() {
         <Route path="/turno-historico" element={<TurnoHistorico />} />
         <Route path="/parque" element={<Parque />} />
         <Route path="/fb" element={<FbFaturacao />} />
-        <Route path="/fb-painel" element={<FbDashboard />} />
+        <Route path="/fb-painel" element={<SoPainel><FbDashboard /></SoPainel>} />
         <Route path="/fb-importar" element={<SoAdmin><FbImportar /></SoAdmin>} />
         <Route path="/conta" element={<Conta />} />
         <Route path="/historico" element={<Historico />} />

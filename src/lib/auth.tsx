@@ -5,6 +5,9 @@ import type { AppRole, Department } from './types'
 
 interface AuthState {
   session: Session | null
+  /** Tem autenticador configurado mas ainda não introduziu o código nesta sessão. */
+  precisaCodigo: boolean
+  revalidarMfa: () => Promise<void>
   email: string | null
   fullName: string | null
   roles: AppRole[]
@@ -24,6 +27,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [roles, setRoles] = useState<AppRole[]>([])
   const [fullName, setFullName] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
+  const [precisaCodigo, setPrecisaCodigo] = useState(false)
+
+  /**
+   * O Supabase distingue dois níveis de garantia: aal1 (só palavra-passe) e
+   * aal2 (palavra-passe + código). Se a conta tem autenticador configurado,
+   * a sessão só está completa em aal2.
+   */
+  const verificarMfa = async () => {
+    const { data } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+    setPrecisaCodigo(data?.nextLevel === 'aal2' && data.nextLevel !== data.currentLevel)
+  }
 
   const loadRoles = async (uid: string | undefined) => {
     if (!uid) { setRoles([]); setFullName(null); return }
@@ -38,12 +52,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     supabase.auth.getSession().then(async ({ data }) => {
       setSession(data.session)
+      if (data.session) await verificarMfa()
       await loadRoles(data.session?.user.id)
       setLoading(false)
     })
     const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => {
       setSession(s)
       loadRoles(s?.user.id)
+      if (s) verificarMfa(); else setPrecisaCodigo(false)
     })
     return () => sub.subscription.unsubscribe()
   }, [])
@@ -59,6 +75,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const value: AuthState = {
     session,
+    precisaCodigo,
+    revalidarMfa: verificarMfa,
     email: session?.user.email ?? null,
     fullName,
     roles,

@@ -13,6 +13,7 @@ import TurnoHistorico from './pages/TurnoHistorico'
 import MigrarImagens from './pages/MigrarImagens'
 import Conta from './pages/Conta'
 import DesafioMfa from './pages/Mfa'
+import DefinirSenha from './pages/DefinirSenha'
 import Itens from './pages/Itens'
 import Utilizadores from './pages/Utilizadores'
 import Dados from './pages/Dados'
@@ -66,10 +67,11 @@ function Interior() {
 }
 
 function Raiz() {
-  const { session, loading, precisaCodigo } = useAuth()
+  const { session, loading, precisaCodigo, senhaTemporaria } = useAuth()
   if (loading) return <Loading label="A iniciar…" />
   if (!session) return <Login />
   if (precisaCodigo) return <DesafioMfa />
+  if (senhaTemporaria) return <DefinirSenha />
   return (
     <AppProvider>
       <Interior />

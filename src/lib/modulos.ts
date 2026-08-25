@@ -15,6 +15,8 @@ export interface Pagina {
   soAdmin?: boolean
   /** Só visível a quem pode ver números do negócio (admin ou financeiro). */
   soPainel?: boolean
+  /** Visível a quem pode ver o controlo de pequenos-almoços. */
+  soPa?: boolean
 }
 
 export interface Modulo {
@@ -43,6 +45,7 @@ export const MODULOS: Modulo[] = [
     paginas: [
       { to: '/fb', label: 'Dia' },
       { to: '/fb-painel', label: 'Painel', soPainel: true },
+      { to: '/fb-pa', label: 'Pequenos-almoços', soPa: true },
       { to: '/fb-importar', label: 'Importar Valentinas', soAdmin: true },
     ],
   },

@@ -21,6 +21,7 @@ export default function Utilizadores() {
   const [novo, setNovo] = useState<{ nome: string; email: string; papeis: AppRole[] } | null>(null)
   const [aTrabalhar, setATrabalhar] = useState(false)
   const [temporaria, setTemporaria] = useState<{ email: string; senha: string } | null>(null)
+  const [comMfa, setComMfa] = useState<Set<string>>(new Set())
 
   const carregar = async () => {
     setLoading(true)
@@ -33,6 +34,12 @@ export default function Utilizadores() {
     for (const p of papeis ?? []) (porUser[p.user_id] ??= []).push(p.role as AppRole)
     setLinhas((perfis ?? []).map(p => ({ ...p, roles: porUser[p.id] ?? [] })))
     setLoading(false)
+
+    // quem tem autenticador ativo (só o servidor sabe)
+    try {
+      const r = await chamar({ acao: 'mfa' }) as unknown as { comMfa?: string[] }
+      setComMfa(new Set(r.comMfa ?? []))
+    } catch { /* não é crítico */ }
   }
   useEffect(() => { carregar() }, [])
 
@@ -77,6 +84,19 @@ export default function Utilizadores() {
     } catch (e) { toast((e as Error).message, 'erro') }
   }
 
+  const removerMfa = async (l: Linha) => {
+    if (!confirm(
+      `Remover o autenticador de ${l.email}?\n\n` +
+      'Use isto quando o telemóvel da receção se perde ou é reiniciado. ' +
+      'A conta volta a entrar só com palavra-passe até configurar outro.',
+    )) return
+    try {
+      await chamar({ acao: 'remover-mfa', id: l.id })
+      toast('Autenticador removido')
+      carregar()
+    } catch (e) { toast((e as Error).message, 'erro') }
+  }
+
   const remover = async (l: Linha) => {
     if (!confirm(`Apagar a conta de ${l.email}? Esta ação não pode ser anulada.`)) return
     try {
@@ -105,7 +125,8 @@ export default function Utilizadores() {
         <div>
           <h1 className="text-lg font-semibold">Utilizadores</h1>
           <p className="text-sm text-slate-500">
-            Sem pelo menos um papel atribuído, a conta não vê dados nenhuns.
+            Sem pelo menos um papel atribuído, a conta não vê dados nenhuns. Cada pessoa ativa
+            a autenticação em dois passos em <em>A minha conta</em>.
           </p>
         </div>
         <button className="btn-primary"
@@ -127,7 +148,14 @@ export default function Utilizadores() {
             {linhas.map(l => (
               <tr key={l.id}>
                 <td className="td">
-                  <div className="font-medium">{l.full_name ?? '—'}</div>
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span className="font-medium">{l.full_name ?? '—'}</span>
+                    {comMfa.has(l.id) && (
+                      <span className="chip bg-brand-100 text-brand-700" title="Autenticador ativo">
+                        2 passos
+                      </span>
+                    )}
+                  </div>
                   <div className="text-xs text-slate-500">{l.email}</div>
                   {l.roles.length === 0 && (
                     <span className="chip mt-1 bg-amber-100 text-amber-800">sem acesso</span>
@@ -146,6 +174,10 @@ export default function Utilizadores() {
                 <td className="td whitespace-nowrap text-right">
                   <button className="text-sm text-brand-600 hover:underline"
                           onClick={() => repor(l)}>repor palavra-passe</button>
+                  {comMfa.has(l.id) && (
+                    <button className="ml-3 text-sm text-amber-700 hover:underline"
+                            onClick={() => removerMfa(l)}>remover autenticador</button>
+                  )}
                   {l.id !== session?.user.id && (
                     <button className="ml-3 text-sm text-slate-400 hover:text-red-600"
                             onClick={() => remover(l)}>apagar</button>

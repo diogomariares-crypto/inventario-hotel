@@ -79,6 +79,13 @@ export default function Conta() {
     if (nova !== confirmar) { toast('As duas palavras-passe não coincidem', 'erro'); return }
     setBusy(true)
     const { error } = await supabase.auth.updateUser({ password: nova })
+    if (!error) {
+      const { data: { user } } = await supabase.auth.getUser()
+      if (user) {
+        await supabase.from('profiles')
+          .update({ senha_temporaria: false }).eq('id', user.id)
+      }
+    }
     setBusy(false)
     if (error) return toast(error.message, 'erro')
     setNova(''); setConfirmar('')
@@ -194,8 +201,8 @@ export default function Conta() {
                  value={confirmar} onChange={e => setConfirmar(e.target.value)} required />
         </div>
         <p className="text-xs text-slate-500">
-          Mínimo 8 caracteres. Se recebeste um convite ou um link de recuperação, é aqui que
-          defines a tua palavra-passe.
+          Mínimo 8 caracteres. Se te esqueceres dela, pede a um administrador que a reponha —
+          ele entrega-te uma temporária e voltas a escolher a tua no acesso seguinte.
         </p>
         <button className="btn-primary" disabled={busy}>
           {busy ? 'A guardar…' : 'Alterar palavra-passe'}

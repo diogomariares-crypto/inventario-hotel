@@ -4,7 +4,13 @@ import type { AppRole } from '../lib/types'
 import { Loading, Modal, useToast } from '../components/ui'
 import { useAuth } from '../lib/auth'
 
-interface Linha { id: string; email: string; full_name: string | null; roles: AppRole[] }
+interface Linha {
+  id: string
+  email: string
+  full_name: string | null
+  senha_temporaria: boolean
+  roles: AppRole[]
+}
 
 const TODOS: { role: AppRole; label: string; desc: string }[] = [
   { role: 'admin', label: 'Administrador', desc: 'tudo, incluindo itens, preços e contas' },
@@ -26,13 +32,17 @@ export default function Utilizadores() {
   const carregar = async () => {
     setLoading(true)
     const [{ data: perfis, error: e1 }, { data: papeis, error: e2 }] = await Promise.all([
-      supabase.from('profiles').select('id, email, full_name').order('email'),
+      supabase.from('profiles').select('id, email, full_name, senha_temporaria').order('email'),
       supabase.from('user_roles').select('user_id, role'),
     ])
     if (e1 || e2) toast((e1 ?? e2)!.message, 'erro')
     const porUser: Record<string, AppRole[]> = {}
     for (const p of papeis ?? []) (porUser[p.user_id] ??= []).push(p.role as AppRole)
-    setLinhas((perfis ?? []).map(p => ({ ...p, roles: porUser[p.id] ?? [] })))
+    setLinhas((perfis ?? []).map(p => ({
+      ...p,
+      senha_temporaria: p.senha_temporaria === true,
+      roles: porUser[p.id] ?? [],
+    })))
     setLoading(false)
 
     // quem tem autenticador ativo (só o servidor sabe)
@@ -66,21 +76,24 @@ export default function Utilizadores() {
       const r = await chamar({
         acao: 'convidar',
         email: novo.email, nome: novo.nome, papeis: novo.papeis,
-        redirect: window.location.origin + window.location.pathname,
       })
+      const criado = novo.email
       setNovo(null)
-      if (r.temporaria) setTemporaria({ email: novo.email, senha: r.temporaria })
-      else toast('Convite enviado por email')
+      if (r.temporaria) setTemporaria({ email: criado, senha: r.temporaria })
       carregar()
     } catch (e) { toast((e as Error).message, 'erro') } finally { setATrabalhar(false) }
   }
 
   const repor = async (l: Linha) => {
-    if (!confirm(`Repor a palavra-passe de ${l.email}?`)) return
+    if (!confirm(
+      `Repor a palavra-passe de ${l.email}?\n\n` +
+      'A atual deixa de funcionar imediatamente. Vais receber uma temporária ' +
+      'para lhe entregares.',
+    )) return
     try {
       const r = await chamar({ acao: 'repor', email: l.email })
       if (r.temporaria) setTemporaria({ email: l.email, senha: r.temporaria })
-      else toast('Email de recuperação enviado')
+      carregar()
     } catch (e) { toast((e as Error).message, 'erro') }
   }
 
@@ -126,7 +139,8 @@ export default function Utilizadores() {
           <h1 className="text-lg font-semibold">Utilizadores</h1>
           <p className="text-sm text-slate-500">
             Sem pelo menos um papel atribuído, a conta não vê dados nenhuns. Cada pessoa ativa
-            a autenticação em dois passos em <em>A minha conta</em>.
+            a autenticação em dois passos em <em>A minha conta</em>. Quem se esquecer da
+            palavra-passe pede-te aqui uma nova — não há emails de recuperação.
           </p>
         </div>
         <button className="btn-primary"
@@ -153,6 +167,12 @@ export default function Utilizadores() {
                     {comMfa.has(l.id) && (
                       <span className="chip bg-brand-100 text-brand-700" title="Autenticador ativo">
                         2 passos
+                      </span>
+                    )}
+                    {l.senha_temporaria && (
+                      <span className="chip bg-amber-100 text-amber-800"
+                            title="Ainda não escolheu uma palavra-passe própria">
+                        temporária
                       </span>
                     )}
                   </div>
@@ -226,8 +246,8 @@ export default function Utilizadores() {
               </div>
             </div>
             <p className="rounded-lg bg-slate-50 px-3 py-2 text-xs text-slate-600">
-              A pessoa recebe um email para definir a palavra-passe dela. Se o email não puder
-              ser enviado, mostro aqui uma palavra-passe temporária para lhe entregares.
+              Não é enviado nenhum email. A seguir mostro uma palavra-passe temporária
+              para lhe entregares — no primeiro acesso a app obriga-a a escolher a dela.
             </p>
             <div className="flex justify-end gap-2 pt-1">
               <button className="btn-ghost" onClick={() => setNovo(null)}>Cancelar</button>
@@ -244,8 +264,8 @@ export default function Utilizadores() {
         {temporaria && (
           <div className="space-y-3">
             <p className="text-sm text-slate-600">
-              Não foi possível enviar o email, por isso a conta ficou com esta palavra-passe.
-              Entrega-a a <strong>{temporaria.email}</strong> e pede que a mude no primeiro acesso.
+              Entrega esta palavra-passe a <strong>{temporaria.email}</strong>. Só serve
+              para o primeiro acesso: a app não a deixa entrar sem escolher outra.
             </p>
             <div className="flex items-center gap-2">
               <code className="flex-1 rounded-lg bg-slate-100 px-3 py-2 font-mono text-sm">

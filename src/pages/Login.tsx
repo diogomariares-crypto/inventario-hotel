@@ -1,40 +1,35 @@
 import { useState } from 'react'
-import { supabase } from '../lib/supabase'
+import { supabase, erroDoLink } from '../lib/supabase'
 
+/**
+ * Só entrar. As contas são criadas por um administrador em
+ * Gestão → Utilizadores, e é também por aí que se repõe uma palavra-passe:
+ * este projeto não envia emails.
+ */
 export default function Login() {
-  const [mode, setMode] = useState<'entrar' | 'criar'>('entrar')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [name, setName] = useState('')
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<{ t: string; erro: boolean } | null>(null)
+  const [ajuda, setAjuda] = useState(false)
+  const [msg, setMsg] = useState<{ t: string; erro: boolean } | null>(
+    erroDoLink ? { t: erroDoLink, erro: true } : null,
+  )
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault()
     setBusy(true); setMsg(null)
     try {
-      if (mode === 'entrar') {
-        const { error } = await supabase.auth.signInWithPassword({ email: email.trim(), password })
-        if (error) throw error
-      } else {
-        const { error } = await supabase.auth.signUp({
-          email: email.trim(),
-          password,
-          options: { data: { full_name: name.trim() } },
-        })
-        if (error) throw error
-        setMsg({
-          t: 'Conta criada. Pede ao administrador para te atribuir permissões — só depois consegues registar contagens.',
-          erro: false,
-        })
-      }
+      const { error } = await supabase.auth.signInWithPassword({
+        email: email.trim(), password,
+      })
+      if (error) throw error
     } catch (err) {
       const m = (err as Error).message ?? String(err)
       setMsg({
-        t: m.includes('Invalid login')
+        t: /invalid login/i.test(m)
           ? 'Email ou palavra-passe incorretos.'
-          : m.includes('already registered')
-            ? 'Já existe uma conta com este email.'
+          : /rate limit|too many/i.test(m)
+            ? 'Demasiadas tentativas. Espera alguns minutos e tenta outra vez.'
             : m,
         erro: true,
       })
@@ -53,13 +48,6 @@ export default function Login() {
         </div>
 
         <form onSubmit={submit} className="card space-y-3 p-5">
-          {mode === 'criar' && (
-            <div>
-              <label className="label">Nome</label>
-              <input className="input" value={name} onChange={e => setName(e.target.value)}
-                     placeholder="Ex: Maria Silva" required />
-            </div>
-          )}
           <div>
             <label className="label">Email</label>
             <input className="input" type="email" autoComplete="email" value={email}
@@ -67,10 +55,8 @@ export default function Login() {
           </div>
           <div>
             <label className="label">Palavra-passe</label>
-            <input className="input" type="password"
-                   autoComplete={mode === 'entrar' ? 'current-password' : 'new-password'}
-                   value={password} onChange={e => setPassword(e.target.value)}
-                   minLength={6} required />
+            <input className="input" type="password" autoComplete="current-password"
+                   value={password} onChange={e => setPassword(e.target.value)} required />
           </div>
 
           {msg && (
@@ -81,17 +67,29 @@ export default function Login() {
           )}
 
           <button className="btn-primary w-full" disabled={busy}>
-            {busy ? 'Aguarda…' : mode === 'entrar' ? 'Entrar' : 'Criar conta'}
+            {busy ? 'Aguarda…' : 'Entrar'}
           </button>
 
           <button
             type="button"
             className="w-full text-center text-sm text-slate-500 hover:text-slate-800"
-            onClick={() => { setMode(m => (m === 'entrar' ? 'criar' : 'entrar')); setMsg(null) }}
+            onClick={() => setAjuda(a => !a)}
           >
-            {mode === 'entrar' ? 'Ainda não tenho conta' : 'Já tenho conta'}
+            Esqueci-me da palavra-passe
           </button>
+
+          {ajuda && (
+            <div className="rounded-lg bg-slate-50 px-3 py-2 text-sm text-slate-600">
+              Fala com o administrador da app. Ele repõe a palavra-passe e entrega-te
+              uma temporária; no primeiro acesso escolhes a tua.
+            </div>
+          )}
         </form>
+
+        <p className="mt-4 text-center text-xs text-slate-400">
+          As contas são criadas por um administrador. Se ainda não tens acesso,
+          pede a quem gere a app.
+        </p>
       </div>
     </div>
   )

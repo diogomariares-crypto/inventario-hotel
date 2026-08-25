@@ -14,6 +14,7 @@ import Parque from './pages/Parque'
 import FbFaturacao from './pages/FbFaturacao'
 import FbImportar from './pages/FbImportar'
 import FbDashboard from './pages/FbDashboard'
+import FbPequenosAlmocos from './pages/FbPequenosAlmocos'
 import MigrarImagens from './pages/MigrarImagens'
 import Conta from './pages/Conta'
 import DesafioMfa from './pages/Mfa'
@@ -30,6 +31,11 @@ function SoAdmin({ children }: { children: React.ReactNode }) {
 function SoPainel({ children }: { children: React.ReactNode }) {
   const { podeVerPainel } = useAuth()
   return podeVerPainel ? <>{children}</> : <Navigate to="/" replace />
+}
+
+function SoPa({ children }: { children: React.ReactNode }) {
+  const { podeVerPa } = useAuth()
+  return podeVerPa ? <>{children}</> : <Navigate to="/" replace />
 }
 
 function Interior() {
@@ -66,6 +72,7 @@ function Interior() {
         <Route path="/parque" element={<Parque />} />
         <Route path="/fb" element={<FbFaturacao />} />
         <Route path="/fb-painel" element={<SoPainel><FbDashboard /></SoPainel>} />
+        <Route path="/fb-pa" element={<SoPa><FbPequenosAlmocos /></SoPa>} />
         <Route path="/fb-importar" element={<SoAdmin><FbImportar /></SoAdmin>} />
         <Route path="/conta" element={<Conta />} />
         <Route path="/historico" element={<Historico />} />

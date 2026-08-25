@@ -103,6 +103,12 @@ export default function Shell({ children }: { children: ReactNode }) {
                   </div>
                   <div className="my-1 border-t border-slate-100" />
                   <button
+                    onClick={() => { setMenu(false); nav('/conta') }}
+                    className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-slate-700 hover:bg-slate-100"
+                  >
+                    A minha conta
+                  </button>
+                  <button
                     onClick={signOut}
                     className="block w-full rounded-lg px-2 py-1.5 text-left text-sm text-red-600 hover:bg-red-50"
                   >

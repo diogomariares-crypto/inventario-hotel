@@ -47,6 +47,7 @@ export default function Turno() {
     perdidos: T.LostItem[]; emprestados: T.BorrowedItem[]; manutencao: T.Maintenance[]
     reclamacoes: T.Complaint[]; fbNum: T.FbNumber[]; fbPrev: T.FbForecast[]
     chegadasHoje: T.Arrival[]; chegadasAmanha: T.Arrival[]
+    fbNotas: T.FbNotas | null
   } | null>(null)
   const [erro, setErro] = useState<string | null>(null)
   const [aCarregar, setACarregar] = useState(true)
@@ -61,7 +62,7 @@ export default function Turno() {
       const [
         ocupacao, feedback, imagens, vips, pendentes, transfers, breakfast,
         hsk, perdidos, emprestados, manutencao, reclamacoes, fbNum, fbPrev,
-        chegadasHoje, chegadasAmanha,
+        chegadasHoje, chegadasAmanha, fbNotas,
       ] = await Promise.all([
         T.fetchOcupacao(hotelId, dia),
         T.fetchFeedback(hotelId, dia),
@@ -79,11 +80,12 @@ export default function Turno() {
         T.fetchDoDia<T.FbForecast>('fb_forecast', hotelId, dia),
         T.fetchChegadas(hotelId, dia),
         T.fetchChegadas(hotelId, addDays(dia, 1)),
+        T.fetchFbNotas(hotelId, dia),
       ])
       setDados({
         ocupacao, feedback, imagens, vips, pendentes, transfers, breakfast, hsk,
         perdidos, emprestados, manutencao, reclamacoes, fbNum, fbPrev,
-        chegadasHoje, chegadasAmanha,
+        chegadasHoje, chegadasAmanha, fbNotas,
       })
       setErro(null)
     } catch (e) {
@@ -199,7 +201,12 @@ export default function Turno() {
               <Reclamacoes ctx={ctx} linhas={dados.reclamacoes} />
             </>
           )}
-          {aba === 'fb' && <FeB ctx={ctx} numeros={dados.fbNum} previsao={dados.fbPrev} />}
+          {aba === 'fb' && (
+            <>
+              <FeB ctx={ctx} numeros={dados.fbNum} previsao={dados.fbPrev} />
+              <NotasFb notas={dados.fbNotas} />
+            </>
+          )}
           {aba === 'chegadas' && (
             <Chegadas ctx={ctx} hoje={dados.chegadasHoje} amanha={dados.chegadasAmanha} />
           )}
@@ -1205,6 +1212,53 @@ function ResumoSemana({ ctx }: { ctx: Ctx }) {
         </tbody>
       </Tabela>
     </div>
+  )
+}
+
+/* ============================== Notas do F&B =============================== */
+/**
+ * Escritas pela equipa de F&B no fecho diário deles. Aparecem aqui para quem
+ * lê o turno não ter de ir a dois sítios — mas só de leitura: corrigem-se em
+ * Faturação F&B → Dia.
+ */
+function NotasFb({ notas }: { notas: T.FbNotas | null }) {
+  const porServico = notas?.por_servico ?? {}
+  const linhas = T.SERVICOS_FB
+    .map(s => ({ label: s.label, texto: (porServico[s.id] ?? '').trim() }))
+    .filter(l => l.texto)
+  const equipa = (notas?.equipa ?? '').trim()
+
+  return (
+    <Seccao cor={CORES.fb} titulo="Notas do F&B">
+      {!linhas.length && !equipa ? (
+        <p className="px-4 py-3 text-sm text-slate-500">
+          A equipa de F&amp;B ainda não deixou notas deste dia.
+        </p>
+      ) : (
+        <div className="space-y-3 px-4 py-3">
+          {linhas.map(l => (
+            <div key={l.label}>
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                {l.label}
+              </div>
+              <p className="whitespace-pre-line text-sm text-slate-700">{l.texto}</p>
+            </div>
+          ))}
+          {equipa && (
+            <div className="rounded-lg bg-slate-50 px-3 py-2">
+              <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+                Assuntos da equipa
+              </div>
+              <p className="whitespace-pre-line text-sm text-slate-700">{equipa}</p>
+            </div>
+          )}
+          <p className="text-xs text-slate-400">
+            Escrito pela equipa de F&amp;B. A manutenção que reportarem aparece no
+            Controlo de Manutenção, no separador Pendentes.
+          </p>
+        </div>
+      )}
+    </Seccao>
   )
 }
 

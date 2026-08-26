@@ -3,7 +3,8 @@ import { useAuth } from '../lib/auth'
 import { useApp } from '../lib/appState'
 import { Loading, NumInput, useToast } from '../components/ui'
 import {
-  type Registo, type Escaloes, GRUPOS, TODAS_AS_CHAVES,
+  type Registo, type Escaloes, type LinhaManut, type NotasServico,
+  GRUPOS, TODAS_AS_CHAVES, SERVICOS_NOTA,
   fetchRegisto, fetchUltimosEscaloes, gravarRegisto,
   recalcular, espelhoDoTurno, escaloesDe, eur,
 } from '../lib/fb'
@@ -13,6 +14,9 @@ const vazio = (): Registo => {
   const r: Registo = {}
   for (const k of TODAS_AS_CHAVES) r[k] = null
   r.bf_tiers = {}
+  r.notas_servico = {}
+  r.notas_equipa = ''
+  r.manutencao = []
   return r
 }
 
@@ -216,6 +220,8 @@ export default function FbFaturacao() {
             )
           })}
 
+          <NotasDoDia reg={reg} setReg={setReg} setSujo={setSujo} podeEscrever={podeEscrever} />
+
           {/* o que vai para o turno */}
           <div className="card p-4">
             <h2 className="text-sm font-semibold">O que vai para o relatório de turno</h2>
@@ -256,6 +262,130 @@ export default function FbFaturacao() {
           </div>
         </>
       )}
+    </div>
+  )
+}
+
+/* ------------------------------ notas do dia ----------------------------- */
+/**
+ * O que a equipa escrevia no corpo do email. As notas por serviço e o assunto
+ * da equipa aparecem na secção F&B do turno; cada linha de manutenção vai para
+ * o Controlo de Manutenção — e volta a ser corrigida se aqui mudar, desde que
+ * ninguém do outro lado lhe tenha mexido no estado.
+ */
+function NotasDoDia({ reg, setReg, setSujo, podeEscrever }: {
+  reg: Registo
+  setReg: React.Dispatch<React.SetStateAction<Registo>>
+  setSujo: (v: boolean) => void
+  podeEscrever: boolean
+}) {
+  const notas = (reg.notas_servico as NotasServico) ?? {}
+  const manut = (reg.manutencao as LinhaManut[]) ?? []
+
+  const porNota = (k: string, v: string) => {
+    setReg(r => ({ ...r, notas_servico: { ...((r.notas_servico as NotasServico) ?? {}), [k]: v } }))
+    setSujo(true)
+  }
+  const porManut = (id: string, campo: 'local' | 'descricao', v: string) => {
+    setReg(r => ({
+      ...r,
+      manutencao: ((r.manutencao as LinhaManut[]) ?? []).map(l => l.id === id ? { ...l, [campo]: v } : l),
+    }))
+    setSujo(true)
+  }
+  const juntarManut = () => {
+    setReg(r => ({
+      ...r,
+      manutencao: [...((r.manutencao as LinhaManut[]) ?? []),
+                   { id: crypto.randomUUID(), local: '', descricao: '' }],
+    }))
+    setSujo(true)
+  }
+  const tirarManut = (id: string) => {
+    if (!confirm('Tirar esta linha?\n\nSe já tiver ido para o Controlo de Manutenção, fica lá — quem trata disso é que a fecha.')) return
+    setReg(r => ({
+      ...r,
+      manutencao: ((r.manutencao as LinhaManut[]) ?? []).filter(l => l.id !== id),
+    }))
+    setSujo(true)
+  }
+
+  return (
+    <div className="card space-y-4 p-4">
+      <div>
+        <h2 className="text-sm font-semibold">Notas do dia</h2>
+        <p className="text-xs text-slate-500">
+          É o que ia no corpo do email. Aparece na secção F&amp;B do relatório de turno,
+          para a receção não ter de procurar em dois sítios.
+        </p>
+      </div>
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        {SERVICOS_NOTA.map(s => (
+          <div key={s.k}>
+            <label className="label">{s.rot}</label>
+            <textarea
+              className="input min-h-[62px] resize-y"
+              disabled={!podeEscrever}
+              placeholder="Sem ocorrências"
+              value={notas[s.k] ?? ''}
+              onChange={e => porNota(s.k, e.target.value)}
+            />
+          </div>
+        ))}
+      </div>
+
+      <div>
+        <label className="label">Assuntos da equipa</label>
+        <textarea
+          className="input min-h-[62px] resize-y"
+          disabled={!podeEscrever}
+          placeholder="Tudo dentro da normalidade"
+          value={(reg.notas_equipa as string) ?? ''}
+          onChange={e => { setReg(r => ({ ...r, notas_equipa: e.target.value })); setSujo(true) }}
+        />
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <label className="label">Equipamentos / manutenção</label>
+            <p className="text-xs text-slate-500">
+              Uma linha por equipamento. Vai direta para o Controlo de Manutenção
+              nos Turnos, com a data de hoje.
+            </p>
+          </div>
+          {podeEscrever && (
+            <button className="btn-ghost shrink-0" onClick={juntarManut}>+ linha</button>
+          )}
+        </div>
+
+        {manut.length === 0 && (
+          <p className="text-sm text-slate-500">Nada a reportar.</p>
+        )}
+        {manut.map(l => (
+          <div key={l.id} className="flex flex-wrap items-end gap-2">
+            <div className="w-48">
+              <label className="label">Equipamento / local</label>
+              <input className="input" disabled={!podeEscrever}
+                     placeholder="Ex: Arca de gelo"
+                     value={l.local}
+                     onChange={e => porManut(l.id, 'local', e.target.value)} />
+            </div>
+            <div className="min-w-[14rem] flex-1">
+              <label className="label">O que se passa</label>
+              <input className="input" disabled={!podeEscrever}
+                     placeholder="Ex: a mola está partida, bem como a pega para abrir"
+                     value={l.descricao}
+                     onChange={e => porManut(l.id, 'descricao', e.target.value)} />
+            </div>
+            {podeEscrever && (
+              <button className="pb-2 text-sm text-slate-400 hover:text-red-600"
+                      onClick={() => tirarManut(l.id)}>remover</button>
+            )}
+          </div>
+        ))}
+      </div>
     </div>
   )
 }

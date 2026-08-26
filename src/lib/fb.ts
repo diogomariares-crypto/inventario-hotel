@@ -16,8 +16,25 @@ export interface Grupo { key: string; titulo: string; escaloes?: boolean; blocos
 
 export interface Escalao { nome: string; pax: number; preco: number }
 
+/** Uma linha reportada à manutenção. O id fica estável para não duplicar. */
+export interface LinhaManut { id: string; local: string; descricao: string }
+export type NotasServico = Record<string, string>
+
+/** Serviços que levam nota, pela ordem do email que a equipa já escreve. */
+export const SERVICOS_NOTA = [
+  { k: 'pequeno_almoco', rot: 'Pequeno-almoço' },
+  { k: 'almoco', rot: 'Almoço' },
+  { k: 'jantar', rot: 'Jantar' },
+  { k: 'bar', rot: 'Bar' },
+  { k: 'room_service', rot: 'Room Service' },
+  { k: 'delivery', rot: 'Uber / Bolt' },
+  { k: 'pensoes', rot: 'Pensões' },
+  { k: 'vips_lanche', rot: 'VIPs + Lanche' },
+] as const
+
 /** Um registo é um saco de valores — as chaves são as colunas da tabela. */
-export type Registo = Record<string, number | string | null | Escaloes>
+export type Registo = Record<string,
+  number | string | null | Escaloes | NotasServico | LinhaManut[]>
 export type Escaloes = Record<string, { pax: number; price: number }>
 
 export const IVA = 1.13

@@ -287,3 +287,20 @@ export async function removerImagem(img: FeedbackImage) {
   await supabase.storage.from(BUCKET_FEEDBACK).remove([img.storage_path])
   await apagar('feedback_images', img.id)
 }
+
+/* ----------------------------- notas do F&B ------------------------------ */
+export interface FbNotas {
+  hotel_id: string
+  report_date: string
+  por_servico: Record<string, string> | null
+  equipa: string | null
+}
+
+/** Notas escritas pela equipa de F&B no fecho diário. Só de leitura aqui. */
+export async function fetchFbNotas(hotelId: string, dia: string): Promise<FbNotas | null> {
+  const { data, error } = await supabase
+    .from('fb_notas').select('*')
+    .eq('hotel_id', hotelId).eq('report_date', dia).maybeSingle()
+  if (error) throw error
+  return (data as FbNotas) ?? null
+}

@@ -8,7 +8,34 @@ import { money, monthLabel, monthRange, qty } from '../lib/format'
 import { Loading, NumInput, Spinner, useToast } from '../components/ui'
 import { supabase } from '../lib/supabase'
 
-type Entry = { qty: number; quebras: number; motivo: string | null; comentario: string | null }
+type Entry = {
+  qty: number
+  parcelas: number[]
+  quebras: number
+  motivo: string | null
+  comentario: string | null
+}
+
+const VAZIO: Entry = { qty: 0, parcelas: [], quebras: 0, motivo: null, comentario: null }
+
+/** Arredonda a 2 casas para o vírgula flutuante não deixar 49,999999. */
+const arred = (n: number) => Math.round(n * 100) / 100
+const soma = (ns: number[]) => arred(ns.reduce((a, b) => a + b, 0))
+
+/**
+ * Lê o que a pessoa escreveu no campo de somar.
+ * Aceita "17", "17,5", "-3" (correção) e ainda "20+17+13" ou "20 17 13"
+ * de uma vez só, para quem estiver a contar num teclado completo.
+ */
+function lerParcelas(texto: string): number[] {
+  return texto
+    .replace(/[^0-9,.+\-\s]/g, '')
+    .split(/[+\s]+/)
+    .map(p => Number(p.replace(',', '.')))
+    .filter(n => Number.isFinite(n) && n !== 0)
+}
+
+const MODO_KEY = 'contagem-fb-modo'
 
 export default function ContagemMensal() {
   const { hotelId } = useApp()
@@ -26,6 +53,10 @@ export default function ContagemMensal() {
   const [cat, setCat] = useState<string | null>(null)
   const [busca, setBusca] = useState('')
   const [aberto, setAberto] = useState<string | null>(null)
+  const [modo, setModo] = useState<'substituir' | 'somar'>(
+    () => (localStorage.getItem(MODO_KEY) === 'somar' ? 'somar' : 'substituir'),
+  )
+  useEffect(() => { localStorage.setItem(MODO_KEY, modo) }, [modo])
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
   // espelho sempre atualizado de `entries`, para o gravador diferido nunca ler estado velho
   const entriesRef = useRef<Record<string, Entry>>({})
@@ -52,14 +83,7 @@ export default function ContagemMensal() {
     if (!p) { setEntries({}); return }
     fetchCounts(p.id).then(cs => {
       const e: Record<string, Entry> = {}
-      for (const c of cs) {
-        e[c.item_id] = {
-          qty: Number(c.closing_qty),
-          quebras: Number(c.quebras),
-          motivo: c.motivo,
-          comentario: c.comentario,
-        }
-      }
+      for (const c of cs) e[c.item_id] = daLinha(c)
       setEntries(e)
     })
   }, [month, periods, hotelId])
@@ -73,13 +97,7 @@ export default function ContagemMensal() {
         payload => {
           const c = payload.new as Count
           if (!c?.item_id) return
-          setEntries(e => ({
-            ...e,
-            [c.item_id]: {
-              qty: Number(c.closing_qty), quebras: Number(c.quebras),
-              motivo: c.motivo, comentario: c.comentario,
-            },
-          }))
+          setEntries(e => ({ ...e, [c.item_id]: daLinha(c) }))
         })
       .subscribe()
     return () => { supabase.removeChannel(ch) }
@@ -97,7 +115,7 @@ export default function ContagemMensal() {
 
   const set = async (itemId: string, patch: Partial<Entry>) => {
     if (!podeEscrever || !hotelId) return
-    const atual = entriesRef.current[itemId] ?? { qty: 0, quebras: 0, motivo: null, comentario: null }
+    const atual = entriesRef.current[itemId] ?? VAZIO
     const novo = { ...atual, ...patch }
     setEntries(e => {
       const next = { ...e, [itemId]: novo }
@@ -120,6 +138,7 @@ export default function ContagemMensal() {
           item_id: itemId,
           closing_qty: novo.qty,
           closing_counted: true,
+          parcelas: novo.parcelas,
           quebras: novo.quebras,
           motivo: novo.motivo,
           comentario: novo.comentario,
@@ -132,6 +151,22 @@ export default function ContagemMensal() {
       }
     }, 700)
   }
+
+  /** Acrescenta ao que já lá está — o stock anda espalhado pelo hotel. */
+  const somar = (itemId: string, texto: string) => {
+    const novas = lerParcelas(texto)
+    if (!novas.length) return
+    const parcelas = [...(entriesRef.current[itemId]?.parcelas ?? []), ...novas]
+    set(itemId, { parcelas, qty: soma(parcelas) })
+  }
+
+  const removerParcela = (itemId: string, idx: number) => {
+    const parcelas = (entriesRef.current[itemId]?.parcelas ?? []).filter((_, k) => k !== idx)
+    set(itemId, { parcelas, qty: soma(parcelas) })
+  }
+
+  /** Escrever o total à mão desfaz as parcelas — deixariam de bater certo. */
+  const definirTotal = (itemId: string, n: number) => set(itemId, { qty: n, parcelas: [] })
 
   const valor = (i: Item, e?: Entry) => (e?.qty ?? 0) * Number(i.unit_price_eur ?? 0)
 
@@ -180,6 +215,27 @@ export default function ContagemMensal() {
             {meses.map(m => <option key={m} value={m}>{monthLabel(m)}</option>)}
           </select>
         </div>
+
+        <div>
+          <label className="label">Como contar</label>
+          <div className="flex rounded-lg border border-slate-200 bg-slate-50 p-0.5">
+            {([
+              ['substituir', 'Substituir'],
+              ['somar', 'Somar'],
+            ] as const).map(([v, rot]) => (
+              <button
+                key={v}
+                onClick={() => setModo(v)}
+                className={`rounded-md px-3 py-1.5 text-sm font-medium ${
+                  modo === v ? 'bg-white text-brand-700 shadow-sm' : 'text-slate-500'
+                }`}
+              >
+                {rot}
+              </button>
+            ))}
+          </div>
+        </div>
+
         <div className="ml-auto flex items-center gap-2 text-sm">
           {saving > 0 && <span className="flex items-center gap-1 text-slate-500"><Spinner /> a guardar</span>}
           {period && (
@@ -213,6 +269,14 @@ export default function ContagemMensal() {
             </button>
           ))}
         </div>
+
+        {modo === 'somar' && (
+          <p className="w-full text-xs text-slate-500">
+            Escreve o que encontraste e carrega em <strong>Somar</strong> — cada parcela fica guardada,
+            por isso podes ir contando pelo hotel fora sem fazer contas de cabeça.
+            Para apagar uma parcela, toca nela.
+          </p>
+        )}
       </div>
 
       {/* totais */}
@@ -279,6 +343,7 @@ export default function ContagemMensal() {
             <div className="space-y-1.5">
               {g.itens.map(i => {
                 const e = entries[i.id]
+                const parcelas = e?.parcelas ?? []
                 const temQtd = (e?.qty ?? 0) > 0
                 const temQuebra = (e?.quebras ?? 0) > 0
                 return (
@@ -299,32 +364,75 @@ export default function ContagemMensal() {
                         </div>
                       </button>
 
-                      <div className="flex items-center gap-1">
-                        <button
-                          className="h-9 w-9 rounded-lg border border-slate-200 text-lg leading-none text-slate-600 disabled:opacity-40"
-                          disabled={!podeEscrever}
-                          onClick={() => set(i.id, { qty: Math.max(0, (e?.qty ?? 0) - 1) })}
-                        >–</button>
-                        <NumInput
-                          className="w-20"
-                          value={e?.qty ?? 0}
-                          disabled={!podeEscrever}
-                          onChange={n => set(i.id, { qty: n })}
-                        />
-                        <button
-                          className="h-9 w-9 rounded-lg border border-slate-200 text-lg leading-none text-slate-600 disabled:opacity-40"
-                          disabled={!podeEscrever}
-                          onClick={() => set(i.id, { qty: (e?.qty ?? 0) + 1 })}
-                        >+</button>
-                      </div>
+                      {modo === 'somar' ? (
+                        <CampoSomar disabled={!podeEscrever} onSomar={t => somar(i.id, t)} />
+                      ) : (
+                        <div className="flex items-center gap-1">
+                          <button
+                            className="h-9 w-9 rounded-lg border border-slate-200 text-lg leading-none text-slate-600 disabled:opacity-40"
+                            disabled={!podeEscrever}
+                            onClick={() => definirTotal(i.id, Math.max(0, (e?.qty ?? 0) - 1))}
+                          >–</button>
+                          <NumInput
+                            className="w-20"
+                            value={e?.qty ?? 0}
+                            disabled={!podeEscrever}
+                            onChange={n => definirTotal(i.id, n)}
+                          />
+                          <button
+                            className="h-9 w-9 rounded-lg border border-slate-200 text-lg leading-none text-slate-600 disabled:opacity-40"
+                            disabled={!podeEscrever}
+                            onClick={() => definirTotal(i.id, arred((e?.qty ?? 0) + 1))}
+                          >+</button>
+                        </div>
+                      )}
 
-                      <div className="w-20 shrink-0 text-right text-sm font-semibold tabular-nums text-slate-700">
-                        {money(valor(i, e))}
+                      <div className="w-20 shrink-0 text-right">
+                        {modo === 'somar' && (
+                          <div className="text-sm font-semibold tabular-nums text-slate-800">
+                            {qty(e?.qty ?? 0)}
+                          </div>
+                        )}
+                        <div className={`tabular-nums ${modo === 'somar'
+                          ? 'text-[11px] text-slate-400'
+                          : 'text-sm font-semibold text-slate-700'}`}>
+                          {money(valor(i, e))}
+                        </div>
                       </div>
                     </div>
 
+                    {parcelas.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 border-t border-slate-100 bg-slate-50/70 px-2.5 py-1.5">
+                        <span className="text-[11px] uppercase tracking-wide text-slate-400">Parcelas</span>
+                        {parcelas.map((p, k) => (
+                          <button
+                            key={k}
+                            disabled={!podeEscrever}
+                            title="Apagar esta parcela"
+                            onClick={() => removerParcela(i.id, k)}
+                            className="rounded-full border border-slate-200 bg-white px-2 py-0.5 text-xs tabular-nums text-slate-700 disabled:opacity-60"
+                          >
+                            {qty(p)}<span className="ml-1 text-slate-400">✕</span>
+                          </button>
+                        ))}
+                        <span className="ml-auto text-xs tabular-nums text-slate-500">
+                          = {qty(e?.qty ?? 0)} {i.unit}
+                        </span>
+                      </div>
+                    )}
+
                     {aberto === i.id && (
                       <div className="grid gap-3 border-t border-slate-100 bg-slate-50/70 p-3 sm:grid-cols-3">
+                        <div>
+                          <label className="label">Total contado</label>
+                          <NumInput value={e?.qty ?? 0} disabled={!podeEscrever}
+                                    onChange={n => definirTotal(i.id, n)} />
+                          {parcelas.length > 0 && (
+                            <div className="mt-1 text-[11px] text-slate-400">
+                              Escrever aqui à mão apaga as {parcelas.length} parcelas.
+                            </div>
+                          )}
+                        </div>
                         <div>
                           <label className="label">Quebras</label>
                           <NumInput value={e?.quebras ?? 0} disabled={!podeEscrever}
@@ -342,7 +450,7 @@ export default function ContagemMensal() {
                             {MOTIVOS.map(m => <option key={m} value={m}>{m}</option>)}
                           </select>
                         </div>
-                        <div>
+                        <div className="sm:col-span-3">
                           <label className="label">Comentário</label>
                           <input className="input" value={e?.comentario ?? ''} disabled={!podeEscrever}
                                  onChange={ev => set(i.id, { comentario: ev.target.value || null })} />
@@ -350,6 +458,7 @@ export default function ContagemMensal() {
                         <div className="text-xs text-slate-500 sm:col-span-3">
                           {qty(e?.qty ?? 0)} {i.unit} × {money(Number(i.unit_price_eur ?? 0))} = <strong>{money(valor(i, e))}</strong>
                           {temQuebra && <> · quebras: {qty(e?.quebras ?? 0)} {i.unit}</>}
+                          {parcelas.length > 0 && <> · {parcelas.length} parcelas</>}
                         </div>
                       </div>
                     )}
@@ -364,5 +473,57 @@ export default function ContagemMensal() {
         )}
       </div>
     </div>
+  )
+}
+
+/** Converte a linha da base de dados no que o ecrã usa. */
+function daLinha(c: Count): Entry {
+  return {
+    qty: Number(c.closing_qty),
+    parcelas: (c.parcelas ?? []).map(Number),
+    quebras: Number(c.quebras),
+    motivo: c.motivo,
+    comentario: c.comentario,
+  }
+}
+
+/**
+ * Campo de somar: escreve-se a quantidade encontrada e carrega-se em Somar
+ * (ou na tecla de confirmar do teclado). O foco fica no campo para se poder
+ * somar outra vez sem tirar o dedo do sítio.
+ */
+function CampoSomar({ disabled, onSomar }: { disabled: boolean; onSomar: (t: string) => void }) {
+  const [txt, setTxt] = useState('')
+  const ref = useRef<HTMLInputElement>(null)
+  return (
+    <form
+      className="flex items-center gap-1"
+      onSubmit={ev => {
+        ev.preventDefault()
+        if (!txt.trim()) return
+        onSomar(txt)
+        setTxt('')
+        ref.current?.focus()
+      }}
+    >
+      <input
+        ref={ref}
+        inputMode="decimal"
+        enterKeyHint="done"
+        disabled={disabled}
+        placeholder="+"
+        className="input w-[72px] text-right tabular-nums"
+        value={txt}
+        onChange={ev => setTxt(ev.target.value.replace(/[^0-9,.+\-\s]/g, ''))}
+        onFocus={ev => ev.currentTarget.select()}
+      />
+      <button
+        type="submit"
+        disabled={disabled || !txt.trim()}
+        className="h-9 shrink-0 rounded-lg bg-brand-500 px-3 text-sm font-medium text-white disabled:opacity-40"
+      >
+        Somar
+      </button>
+    </form>
   )
 }

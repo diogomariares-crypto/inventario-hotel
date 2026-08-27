@@ -18,6 +18,7 @@ const TODOS: { role: AppRole; label: string; desc: string }[] = [
   { role: 'hsk', label: 'Housekeeping', desc: 'contagens HSK e operação diária' },
   { role: 'fb', label: 'F&B', desc: 'contagens do restaurante e faturação diária' },
   { role: 'financeiro', label: 'Financeiro', desc: 'painel de faturação e números do negócio' },
+  { role: 'rh', label: 'Recursos Humanos', desc: 'fichas de pessoal, vencimentos e custos de empresa' },
 ]
 
 export default function Utilizadores() {

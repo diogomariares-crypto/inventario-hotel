@@ -1,0 +1,547 @@
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { useApp } from '../lib/appState'
+import { useAuth } from '../lib/auth'
+import {
+  ESTADOS, TIPOS_CONTRATO, apagarEmpregado, criarEmpregado, custo,
+  fetchDepartamentos, fetchEmpregados, fetchEmpresas, fetchParametros,
+  guardarEmpregado, jaSaiu, pct, somar, vaiSair,
+  type Departamento, type Empregado, type Empresa, type Estado, type Parametros,
+} from '../lib/hr'
+import { money, dmy } from '../lib/format'
+import { Loading, Modal, NumInput, Spinner, StatCard, useToast } from '../components/ui'
+
+const CORES_ESTADO: Record<Estado, string> = {
+  activo: 'bg-slate-100 text-slate-600',
+  baixa: 'bg-amber-100 text-amber-800',
+  saiu: 'bg-slate-200 text-slate-500',
+}
+
+export default function Rh() {
+  const { hotels } = useApp()
+  const { email } = useAuth()
+  const toast = useToast()
+
+  const [empresas, setEmpresas] = useState<Empresa[]>([])
+  const [deps, setDeps] = useState<Departamento[]>([])
+  const [pessoas, setPessoas] = useState<Empregado[]>([])
+  const [param, setParam] = useState<Parametros | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [erro, setErro] = useState<string | null>(null)
+  const [saving, setSaving] = useState(0)
+
+  const [busca, setBusca] = useState('')
+  const [fEmpresa, setFEmpresa] = useState('')
+  const [fHotel, setFHotel] = useState('')
+  const [fDep, setFDep] = useState('')
+  const [fEstado, setFEstado] = useState('')
+  const [semSalario, setSemSalario] = useState(false)
+  const [ficha, setFicha] = useState<string | null>(null)
+  const [novo, setNovo] = useState(false)
+
+  const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const pessoasRef = useRef<Empregado[]>([])
+  pessoasRef.current = pessoas
+
+  useEffect(() => {
+    Promise.all([
+      fetchEmpresas(), fetchDepartamentos(), fetchEmpregados(),
+      fetchParametros(new Date().getFullYear()),
+    ])
+      .then(([es, ds, ps, pa]) => { setEmpresas(es); setDeps(ds); setPessoas(ps); setParam(pa) })
+      .catch(e => setErro((e as Error).message))
+      .finally(() => setLoading(false))
+  }, [])
+
+  const nomeEmpresa = useMemo(
+    () => Object.fromEntries(empresas.map(e => [e.id, e.nome])), [empresas])
+  const funcoes = useMemo(
+    () => [...new Set(pessoas.map(p => p.funcao).filter(Boolean))].sort() as string[],
+    [pessoas])
+
+  /** Guarda com atraso, para escrever à vontade sem uma gravação por tecla. */
+  const alterar = (id: string, patch: Partial<Empregado>) => {
+    setPessoas(ps => ps.map(p => (p.id === id ? { ...p, ...patch } : p)))
+    clearTimeout(timers.current[id])
+    timers.current[id] = setTimeout(async () => {
+      setSaving(s => s + 1)
+      try {
+        const atual = pessoasRef.current.find(p => p.id === id)
+        if (atual) await guardarEmpregado(id, semChaves(atual), email)
+      } catch (e) {
+        toast((e as Error).message, 'erro')
+      } finally { setSaving(s => s - 1) }
+    }, 600)
+  }
+
+  const filtradas = useMemo(() => {
+    const q = busca.trim().toLowerCase()
+    return pessoas.filter(p =>
+      (!q || p.nome.toLowerCase().includes(q) || String(p.numero ?? '').includes(q) ||
+        (p.funcao ?? '').toLowerCase().includes(q)) &&
+      (!fEmpresa || p.empresa_id === fEmpresa) &&
+      (!fHotel || (fHotel === '—' ? !p.hotel_id : p.hotel_id === fHotel)) &&
+      (!fDep || (fDep === '—' ? !p.departamento_id : p.departamento_id === fDep)) &&
+      (!fEstado || p.estado === fEstado) &&
+      (!semSalario || p.vencimento_base <= 0))
+  }, [pessoas, busca, fEmpresa, fHotel, fDep, fEstado, semSalario])
+
+  const totais = useMemo(
+    () => (param ? somar(filtradas.filter(p => !jaSaiu(p)), param) : null),
+    [filtradas, param])
+
+  const porPreencher = pessoas.filter(p => !jaSaiu(p) && p.vencimento_base <= 0).length
+  const aSair = pessoas.filter(p => vaiSair(p)).length
+  const emBaixa = pessoas.filter(p => p.estado === 'baixa').length
+
+  if (loading) return <Loading />
+  if (erro) {
+    return (
+      <div className="card p-6 text-sm">
+        <h2 className="mb-2 font-semibold text-red-600">Não foi possível abrir os recursos humanos</h2>
+        <p className="text-slate-600">{erro}</p>
+      </div>
+    )
+  }
+  if (!param) return null
+
+  return (
+    <div className="space-y-3">
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Pessoas ao serviço" value={totais?.pessoas ?? 0}
+                  hint={`${pessoas.length} fichas no total`} />
+        <StatCard label="Custo de empresa / mês" value={money(totais?.total ?? 0)} tone="brand"
+                  hint={`${money(totais?.bruto ?? 0)} + ${money(totais?.encargos ?? 0)} de encargos`} />
+        <StatCard label="Custo / ano" value={money((totais?.total ?? 0) * 12)}
+                  hint="mês médio × 12, já com férias e Natal" />
+        <StatCard
+          label="Por preencher"
+          value={porPreencher}
+          tone={porPreencher ? 'warn' : 'default'}
+          hint={`sem vencimento · ${emBaixa} em baixa · ${aSair} a sair`}
+        />
+      </div>
+
+      {/* filtros */}
+      <div className="card flex flex-wrap items-end gap-2 p-3">
+        <input className="input min-w-[200px] flex-1" placeholder="Procurar por nome, nº ou função…"
+               value={busca} onChange={e => setBusca(e.target.value)} />
+        <select className="input w-auto" value={fEmpresa} onChange={e => setFEmpresa(e.target.value)}>
+          <option value="">Todas as empresas</option>
+          {empresas.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+        </select>
+        <select className="input w-auto" value={fHotel} onChange={e => setFHotel(e.target.value)}>
+          <option value="">Todos os hotéis</option>
+          {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+          <option value="—">Sem hotel</option>
+        </select>
+        <select className="input w-auto" value={fDep} onChange={e => setFDep(e.target.value)}>
+          <option value="">Todos os departamentos</option>
+          {deps.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+          <option value="—">Sem departamento</option>
+        </select>
+        <select className="input w-auto" value={fEstado} onChange={e => setFEstado(e.target.value)}>
+          <option value="">Todos os estados</option>
+          {ESTADOS.map(e => <option key={e.v} value={e.v}>{e.rot}</option>)}
+        </select>
+        <label className="flex items-center gap-1.5 text-sm text-slate-600">
+          <input type="checkbox" checked={semSalario} onChange={e => setSemSalario(e.target.checked)} />
+          só por preencher
+        </label>
+        <div className="ml-auto flex items-center gap-2">
+          {saving > 0 && <span className="flex items-center gap-1 text-sm text-slate-500"><Spinner /> a guardar</span>}
+          <button className="btn-primary" onClick={() => setNovo(true)}>Nova pessoa</button>
+        </div>
+      </div>
+
+      {/* lista */}
+      <div className="card overflow-x-auto">
+        <table className="w-full min-w-[1050px] text-sm">
+          <thead>
+            <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="th w-12">Nº</th>
+              <th className="th">Nome</th>
+              <th className="th w-40">Função</th>
+              <th className="th w-44">Departamento</th>
+              <th className="th w-44">Hotel</th>
+              <th className="th w-32">Estado</th>
+              <th className="th w-28 text-right">Base</th>
+              <th className="th w-32 text-right">Custo / mês</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtradas.map(p => {
+              const c = custo(p, param)
+              const saiu = jaSaiu(p)
+              return (
+                <tr key={p.id} className={`border-b border-slate-100 ${saiu ? 'opacity-50' : ''}`}>
+                  <td className="td tabular-nums text-slate-400">{p.numero ?? ''}</td>
+                  <td className="td">
+                    <button className="text-left font-medium text-slate-800 hover:text-brand-700"
+                            onClick={() => setFicha(p.id)}>
+                      {p.nome}
+                    </button>
+                    <div className="text-[11px] text-slate-400">
+                      {nomeEmpresa[p.empresa_id] ?? '—'}
+                      {vaiSair(p) && <span className="ml-1 text-amber-600">· sai a {dmy(p.data_saida!)}</span>}
+                    </div>
+                  </td>
+                  <td className="td">
+                    <input className="input h-8 text-sm" list="hr-funcoes" value={p.funcao ?? ''}
+                           onChange={e => alterar(p.id, { funcao: e.target.value || null })} />
+                  </td>
+                  <td className="td">
+                    <select className="input h-8 text-sm" value={p.departamento_id ?? ''}
+                            onChange={e => alterar(p.id, { departamento_id: e.target.value || null })}>
+                      <option value="">—</option>
+                      {deps.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+                    </select>
+                  </td>
+                  <td className="td">
+                    <select className="input h-8 text-sm" value={p.hotel_id ?? ''}
+                            onChange={e => alterar(p.id, { hotel_id: e.target.value || null })}>
+                      <option value="">—</option>
+                      {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                    </select>
+                  </td>
+                  <td className="td">
+                    <select
+                      className={`input h-8 text-sm ${CORES_ESTADO[p.estado]}`}
+                      value={p.estado}
+                      onChange={e => alterar(p.id, { estado: e.target.value as Estado })}
+                    >
+                      {ESTADOS.map(e => <option key={e.v} value={e.v}>{e.rot}</option>)}
+                    </select>
+                  </td>
+                  <td className="td text-right">
+                    <NumInput className="h-8 w-24 text-sm" value={p.vencimento_base}
+                              onChange={n => alterar(p.id, { vencimento_base: n })} />
+                  </td>
+                  <td className="td text-right tabular-nums">
+                    <div className="font-semibold text-slate-800">{money(c.total)}</div>
+                    {p.estado === 'baixa' && c.pleno > c.total && (
+                      <div className="text-[11px] text-amber-600">normal {money(c.pleno)}</div>
+                    )}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+        <datalist id="hr-funcoes">{funcoes.map(f => <option key={f} value={f} />)}</datalist>
+        {filtradas.length === 0 && (
+          <div className="p-8 text-center text-sm text-slate-500">Ninguém com estes filtros.</div>
+        )}
+      </div>
+
+      {ficha && (
+        <Ficha
+          pessoa={pessoas.find(p => p.id === ficha)!}
+          param={param} empresas={empresas} deps={deps} funcoes={funcoes}
+          hoteis={hotels.map(h => ({ id: h.id, nome: h.name }))}
+          onFechar={() => setFicha(null)}
+          onMudar={patch => alterar(ficha, patch)}
+          onApagar={async () => {
+            if (!confirm('Apagar esta ficha? Se a pessoa saiu, é preferível marcar como "Saiu" — o histórico fica.')) return
+            await apagarEmpregado(ficha)
+            setPessoas(ps => ps.filter(p => p.id !== ficha))
+            setFicha(null)
+            toast('Ficha apagada')
+          }}
+        />
+      )}
+
+      {novo && (
+        <NovaPessoa
+          empresas={empresas}
+          onFechar={() => setNovo(false)}
+          onCriar={async (nome, empresa_id) => {
+            const e = await criarEmpregado({ nome, empresa_id })
+            setPessoas(ps => [...ps, e].sort((a, b) => a.nome.localeCompare(b.nome, 'pt')))
+            setNovo(false)
+            setFicha(e.id)
+          }}
+        />
+      )}
+
+      <p className="px-1 text-xs text-slate-400">
+        Custo de empresa = vencimento (×{12 + 1 + 1} meses, com férias e Natal) + subsídios +
+        TSU {pct(param.tsu)} + seguro de acidentes de trabalho {pct(param.seguro_at)}
+        {param.fundos > 0 && <> + fundos {pct(param.fundos)}</>}.
+        As taxas e os limites isentos mudam-se em Definições.
+      </p>
+    </div>
+  )
+}
+
+/** Só as colunas editáveis: a chave e os carimbos de tempo são da base de dados. */
+function semChaves(e: Empregado) {
+  const fora = new Set(['id', 'criado_em', 'atualizado_em', 'atualizado_por'])
+  return Object.fromEntries(
+    Object.entries(e).filter(([k]) => !fora.has(k)),
+  ) as Partial<Empregado>
+}
+
+/* --------------------------------------------------------------------- ficha */
+
+function Ficha({
+  pessoa, param, empresas, deps, hoteis, funcoes, onFechar, onMudar, onApagar,
+}: {
+  pessoa: Empregado
+  param: Parametros
+  empresas: Empresa[]
+  deps: Departamento[]
+  hoteis: { id: string; nome: string }[]
+  funcoes: string[]
+  onFechar: () => void
+  onMudar: (p: Partial<Empregado>) => void
+  onApagar: () => void
+}) {
+  const c = custo(pessoa, param)
+  const campo = (k: keyof Empregado) => (n: number) => onMudar({ [k]: n } as Partial<Empregado>)
+
+  return (
+    <Modal open onClose={onFechar} title={pessoa.nome} wide>
+      <div className="grid gap-5 lg:grid-cols-[1fr_260px]">
+        <div className="space-y-5">
+          <Bloco titulo="Identificação">
+            <Campo rot="Nome" larga>
+              <input className="input" value={pessoa.nome}
+                     onChange={e => onMudar({ nome: e.target.value })} />
+            </Campo>
+            <Campo rot="Nº">
+              <NumInput value={pessoa.numero ?? 0}
+                        onChange={n => onMudar({ numero: n || null })} />
+            </Campo>
+            <Campo rot="Empresa">
+              <select className="input" value={pessoa.empresa_id}
+                      onChange={e => onMudar({ empresa_id: e.target.value })}>
+                {empresas.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+              </select>
+            </Campo>
+            <Campo rot="Hotel">
+              <select className="input" value={pessoa.hotel_id ?? ''}
+                      onChange={e => onMudar({ hotel_id: e.target.value || null })}>
+                <option value="">— sem hotel —</option>
+                {hoteis.map(h => <option key={h.id} value={h.id}>{h.nome}</option>)}
+              </select>
+            </Campo>
+            <Campo rot="Departamento">
+              <select className="input" value={pessoa.departamento_id ?? ''}
+                      onChange={e => onMudar({ departamento_id: e.target.value || null })}>
+                <option value="">—</option>
+                {deps.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
+              </select>
+            </Campo>
+            <Campo rot="Função">
+              <input className="input" list="hr-funcoes-ficha" value={pessoa.funcao ?? ''}
+                     onChange={e => onMudar({ funcao: e.target.value || null })} />
+              <datalist id="hr-funcoes-ficha">
+                {funcoes.map(f => <option key={f} value={f} />)}
+              </datalist>
+            </Campo>
+            <Campo rot="Tipo de contrato">
+              <select className="input" value={pessoa.tipo_contrato ?? ''}
+                      onChange={e => onMudar({ tipo_contrato: e.target.value || null })}>
+                <option value="">—</option>
+                {TIPOS_CONTRATO.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+            </Campo>
+            <Campo rot="Entrada">
+              <input type="date" className="input" value={pessoa.data_entrada ?? ''}
+                     onChange={e => onMudar({ data_entrada: e.target.value || null })} />
+            </Campo>
+            <Campo rot="Saída">
+              <input type="date" className="input" value={pessoa.data_saida ?? ''}
+                     onChange={e => onMudar({ data_saida: e.target.value || null })} />
+            </Campo>
+            <Campo rot="Estado" larga>
+              <div className="flex flex-wrap gap-2">
+                {ESTADOS.map(e => (
+                  <button
+                    key={e.v}
+                    onClick={() => onMudar({ estado: e.v })}
+                    className={`rounded-lg px-3 py-1.5 text-sm font-medium ${
+                      pessoa.estado === e.v
+                        ? 'bg-brand-500 text-white'
+                        : 'border border-slate-200 bg-white text-slate-600'
+                    }`}
+                  >{e.rot}</button>
+                ))}
+              </div>
+              <p className="mt-1 text-xs text-slate-500">
+                {ESTADOS.find(e => e.v === pessoa.estado)?.desc}
+              </p>
+            </Campo>
+          </Bloco>
+
+          <Bloco titulo="Remuneração">
+            <Campo rot="Vencimento base (mês)">
+              <NumInput value={pessoa.vencimento_base} onChange={campo('vencimento_base')} />
+            </Campo>
+            <Campo rot="Meses de subs. de férias">
+              <NumInput value={pessoa.meses_ferias} onChange={campo('meses_ferias')} />
+            </Campo>
+            <Campo rot="Meses de subs. de Natal">
+              <NumInput value={pessoa.meses_natal} onChange={campo('meses_natal')} />
+            </Campo>
+            <Campo rot="Subs. alimentação / dia">
+              <NumInput value={pessoa.sub_alim_dia} onChange={campo('sub_alim_dia')} />
+            </Campo>
+            <Campo rot="Dias por mês">
+              <NumInput value={pessoa.sub_alim_dias_mes} onChange={campo('sub_alim_dias_mes')} />
+            </Campo>
+            <Campo rot="Pago em">
+              <select className="input" value={pessoa.sub_alim_cartao ? 'cartao' : 'dinheiro'}
+                      onChange={e => onMudar({ sub_alim_cartao: e.target.value === 'cartao' })}>
+                <option value="cartao">Cartão refeição (isento até {money(param.limite_alim_cartao)}/dia)</option>
+                <option value="dinheiro">Dinheiro (isento até {money(param.limite_alim_dinheiro)}/dia)</option>
+              </select>
+            </Campo>
+            <Campo rot="Subsídio de línguas">
+              <NumInput value={pessoa.sub_linguas} onChange={campo('sub_linguas')} />
+            </Campo>
+            <Campo rot="Isenção de horário">
+              <NumInput value={pessoa.isencao_horario} onChange={campo('isencao_horario')} />
+            </Campo>
+            <Campo rot="Abono para falhas">
+              <NumInput value={pessoa.abono_falhas} onChange={campo('abono_falhas')} />
+            </Campo>
+            <Campo rot="Outros subsídios">
+              <NumInput value={pessoa.outros_subsidios} onChange={campo('outros_subsidios')} />
+            </Campo>
+            <Campo rot="A que se referem" larga>
+              <input className="input" value={pessoa.outros_desc ?? ''}
+                     onChange={e => onMudar({ outros_desc: e.target.value || null })} />
+            </Campo>
+          </Bloco>
+
+          <Bloco titulo="Correções">
+            <Campo rot="Taxa TSU própria (%)">
+              <NumInput
+                value={pessoa.taxa_tsu != null ? pessoa.taxa_tsu * 100 : 0}
+                onChange={n => onMudar({ taxa_tsu: n > 0 ? n / 100 : null })}
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                0 = usa a taxa geral ({pct(param.tsu)}). Serve para isenções ou taxas reduzidas.
+              </p>
+            </Campo>
+            <Campo rot="Encargos à mão (mês)">
+              <NumInput
+                value={pessoa.encargos_manual ?? 0}
+                onChange={n => onMudar({ encargos_manual: n > 0 ? n : null })}
+              />
+              <p className="mt-1 text-xs text-slate-400">
+                0 = calcula. Preenche se a contabilidade der outro valor.
+              </p>
+            </Campo>
+            <Campo rot="Notas" larga>
+              <textarea className="input min-h-[70px]" value={pessoa.notas ?? ''}
+                        onChange={e => onMudar({ notas: e.target.value || null })} />
+            </Campo>
+          </Bloco>
+
+          <button className="text-sm text-red-600 hover:underline" onClick={onApagar}>
+            Apagar ficha
+          </button>
+        </div>
+
+        {/* conta em direto */}
+        <div className="h-fit rounded-xl border border-slate-200 bg-slate-50 p-4 lg:sticky lg:top-4">
+          <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+            Custo de empresa
+          </div>
+          <div className="mt-1 text-2xl font-semibold tabular-nums text-brand-700">
+            {money(c.total)}<span className="text-sm font-normal text-slate-500"> /mês</span>
+          </div>
+          <div className="text-xs text-slate-500">{money(c.total * 12)} por ano</div>
+
+          {pessoa.estado !== 'activo' && (
+            <div className="mt-2 rounded-lg bg-amber-100 px-2.5 py-1.5 text-xs text-amber-800">
+              {pessoa.estado === 'baixa'
+                ? <>Em baixa. Ao serviço custaria {money(c.pleno)}/mês — poupança de {money(c.pleno - c.total)}.</>
+                : <>Fora do quadro. Não entra nos totais.</>}
+            </div>
+          )}
+
+          <dl className="mt-3 space-y-1 border-t border-slate-200 pt-3 text-sm">
+            <Linha rot="Vencimento" v={c.base} nota="já com férias e Natal" />
+            <Linha rot="Complementos" v={c.complementos} />
+            <Linha rot="Abono para falhas" v={c.abono} />
+            <Linha rot="Alimentação" v={c.alimentacao} />
+            <Linha rot="Bruto" v={c.bruto} forte />
+            <Linha rot={`Encargos (${pct(c.taxa)})`} v={c.encargos}
+                   nota={c.encargosManuais ? 'valor à mão' : `sobre ${money(c.baseTsu)}`} />
+            <Linha rot="Total" v={c.total} forte />
+          </dl>
+        </div>
+      </div>
+    </Modal>
+  )
+}
+
+const Bloco = ({ titulo, children }: { titulo: string; children: React.ReactNode }) => (
+  <div>
+    <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">{titulo}</h4>
+    <div className="grid gap-3 sm:grid-cols-2">{children}</div>
+  </div>
+)
+
+const Campo = ({ rot, larga, children }: { rot: string; larga?: boolean; children: React.ReactNode }) => (
+  <div className={larga ? 'sm:col-span-2' : ''}>
+    <label className="label">{rot}</label>
+    {children}
+  </div>
+)
+
+const Linha = ({ rot, v, nota, forte }: { rot: string; v: number; nota?: string; forte?: boolean }) => (
+  <div className={`flex items-baseline justify-between gap-2 ${forte ? 'border-t border-slate-200 pt-1 font-semibold' : ''}`}>
+    <dt className="text-slate-600">
+      {rot}
+      {nota && <span className="block text-[11px] text-slate-400">{nota}</span>}
+    </dt>
+    <dd className="tabular-nums text-slate-800">{money(v)}</dd>
+  </div>
+)
+
+/* ---------------------------------------------------------------- nova ficha */
+
+function NovaPessoa({
+  empresas, onFechar, onCriar,
+}: {
+  empresas: Empresa[]
+  onFechar: () => void
+  onCriar: (nome: string, empresaId: string) => Promise<void>
+}) {
+  const [nome, setNome] = useState('')
+  const [empresa, setEmpresa] = useState(empresas[0]?.id ?? '')
+  const [aCriar, setACriar] = useState(false)
+  const toast = useToast()
+
+  return (
+    <Modal open onClose={onFechar} title="Nova pessoa">
+      <div className="space-y-3">
+        <div>
+          <label className="label">Nome</label>
+          <input className="input" autoFocus value={nome} onChange={e => setNome(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">Empresa</label>
+          <select className="input" value={empresa} onChange={e => setEmpresa(e.target.value)}>
+            {empresas.map(e => <option key={e.id} value={e.id}>{e.nome}</option>)}
+          </select>
+        </div>
+        <button
+          className="btn-primary w-full"
+          disabled={!nome.trim() || !empresa || aCriar}
+          onClick={async () => {
+            setACriar(true)
+            try { await onCriar(nome.trim(), empresa) }
+            catch (e) { toast((e as Error).message, 'erro'); setACriar(false) }
+          }}
+        >
+          {aCriar ? 'A criar…' : 'Criar e abrir ficha'}
+        </button>
+      </div>
+    </Modal>
+  )
+}

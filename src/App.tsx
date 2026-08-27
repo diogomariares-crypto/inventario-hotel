@@ -21,6 +21,9 @@ import DesafioMfa from './pages/Mfa'
 import DefinirSenha from './pages/DefinirSenha'
 import Itens from './pages/Itens'
 import Utilizadores from './pages/Utilizadores'
+import Rh from './pages/Rh'
+import RhCustos from './pages/RhCustos'
+import RhDefinicoes from './pages/RhDefinicoes'
 import Dados from './pages/Dados'
 
 function SoAdmin({ children }: { children: React.ReactNode }) {
@@ -36,6 +39,11 @@ function SoPainel({ children }: { children: React.ReactNode }) {
 function SoPa({ children }: { children: React.ReactNode }) {
   const { podeVerPa } = useAuth()
   return podeVerPa ? <>{children}</> : <Navigate to="/" replace />
+}
+
+function SoRh({ children }: { children: React.ReactNode }) {
+  const { podeVerRh } = useAuth()
+  return podeVerRh ? <>{children}</> : <Navigate to="/" replace />
 }
 
 function Interior() {
@@ -74,6 +82,9 @@ function Interior() {
         <Route path="/fb-painel" element={<SoPainel><FbDashboard /></SoPainel>} />
         <Route path="/fb-pa" element={<SoPa><FbPequenosAlmocos /></SoPa>} />
         <Route path="/fb-importar" element={<SoAdmin><FbImportar /></SoAdmin>} />
+        <Route path="/rh" element={<SoRh><Rh /></SoRh>} />
+        <Route path="/rh-custos" element={<SoRh><RhCustos /></SoRh>} />
+        <Route path="/rh-definicoes" element={<SoAdmin><RhDefinicoes /></SoAdmin>} />
         <Route path="/conta" element={<Conta />} />
         <Route path="/historico" element={<Historico />} />
         <Route path="/itens" element={<SoAdmin><Itens /></SoAdmin>} />

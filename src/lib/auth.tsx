@@ -19,6 +19,7 @@ interface AuthState {
   podeVerPainel: boolean
   /** Vê o controlo de pequenos-almoços: receção, F&B, financeiro e admin. */
   podeVerPa: boolean
+  podeVerRh: boolean
   canWrite: (d: Department) => boolean
   allowedDepartments: Department[]
   signOut: () => Promise<void>
@@ -79,6 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const isAdmin = roles.includes('admin')
   const podeVerPainel = isAdmin || roles.includes('financeiro')
   const podeVerPa = podeVerPainel || roles.includes('fo') || roles.includes('fb')
+  // salários só para quem tem o perfil próprio — não anda colado a nenhum operacional
+  const podeVerRh = isAdmin || roles.includes('rh')
   const canWrite = (d: Department) =>
     isAdmin ||
     (d === 'FO' && roles.includes('fo')) ||
@@ -99,6 +102,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     isAdmin,
     podeVerPainel,
     podeVerPa,
+    podeVerRh,
     canWrite,
     allowedDepartments,
     signOut: async () => { await supabase.auth.signOut() },

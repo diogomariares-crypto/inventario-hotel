@@ -17,6 +17,8 @@ export interface Pagina {
   soPainel?: boolean
   /** Visível a quem pode ver o controlo de pequenos-almoços. */
   soPa?: boolean
+  /** Só visível a quem tem o perfil de recursos humanos. */
+  soRh?: boolean
 }
 
 export interface Modulo {
@@ -25,6 +27,8 @@ export interface Modulo {
   icone: string
   /** Só visível para administradores. */
   soAdmin?: boolean
+  /** Só visível a quem tem o perfil de recursos humanos. */
+  soRh?: boolean
   paginas: Pagina[]
 }
 
@@ -68,6 +72,17 @@ export const MODULOS: Modulo[] = [
       { to: '/historico', label: 'Histórico' },
       { to: '/itens', label: 'Itens', soAdmin: true },
       { to: '/dados', label: 'Importar/Exportar', soAdmin: true },
+    ],
+  },
+  {
+    id: 'rh',
+    label: 'Pessoal',
+    icone: '☺',
+    soRh: true,
+    paginas: [
+      { to: '/rh', label: 'Pessoas' },
+      { to: '/rh-custos', label: 'Custos' },
+      { to: '/rh-definicoes', label: 'Definições', soAdmin: true },
     ],
   },
   {

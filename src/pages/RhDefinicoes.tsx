@@ -1,11 +1,11 @@
 import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import {
-  fetchDepartamentos, fetchEmpresas, fetchParametros, guardarParametros, pct,
+  fetchDepartamentos, fetchEmpresas, fetchParametros, guardarEmpresa, guardarParametros, pct,
   type Departamento, type Empresa, type Parametros,
 } from '../lib/hr'
 import { money } from '../lib/format'
-import { Loading, NumInput, useToast } from '../components/ui'
+import { Loading, NumInput, Spinner, useToast } from '../components/ui'
 
 export default function RhDefinicoes() {
   const toast = useToast()
@@ -77,6 +77,7 @@ export default function RhDefinicoes() {
               <div>
                 <label className="label">TSU (%)</label>
                 <NumInput value={p.tsu * 100} onChange={taxa('tsu')} />
+                <p className="mt-0.5 text-[11px] text-slate-400">só a parte da empresa</p>
               </div>
               <div>
                 <label className="label">Seguro AT (%)</label>
@@ -87,16 +88,21 @@ export default function RhDefinicoes() {
                 <NumInput value={p.fundos * 100} onChange={taxa('fundos')} />
               </div>
             </div>
+            <p className="mt-1.5 text-xs text-slate-500">
+              As três somam-se: {pct(p.tsu)} + {pct(p.seguro_at)} + {pct(p.fundos)} ={' '}
+              <strong className="text-slate-700">{pct(total)}</strong> sobre a remuneração.
+            </p>
             <p className="mt-1 text-xs text-slate-500">
-              Total aplicado: <strong>{pct(total)}</strong>. Em 2026 o FCT está extinto e o FGCT
-              suspenso, por isso o normal é ficar a zero. O seguro de acidentes de trabalho varia
-              com a apólice — 1% é uma média.
+              A TSU da entidade patronal são 23,75% — os 11% descontados ao trabalhador saem do
+              vencimento dele e não são custo adicional para a empresa. Em 2026 o FCT está extinto
+              e o FGCT suspenso, por isso o normal é ficarem a zero. O seguro de acidentes de
+              trabalho varia com a apólice — 1% é uma média.
             </p>
           </div>
 
           <div>
             <h4 className="mb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">
-              Subsídio de alimentação — limites isentos por dia
+Subsídio de alimentação — limites legais de isenção
             </h4>
             <div className="grid gap-3 sm:grid-cols-2">
               <div>
@@ -111,7 +117,8 @@ export default function RhDefinicoes() {
               </div>
             </div>
             <p className="mt-1 text-xs text-slate-500">
-              Só a parte acima do limite paga TSU. Valores de 2026:
+              Isto é o que a lei isenta, não o que pagamos — o valor praticado por cada empresa
+              define-se no quadro abaixo. Só a parte acima do limite paga TSU. Em 2026:
               {' '}{money(6.15)} em dinheiro, {money(10.46)} em cartão.
             </p>
           </div>
@@ -147,20 +154,135 @@ export default function RhDefinicoes() {
         </div>
       </div>
 
+      <Empresas empresas={empresas} param={p} onMudou={carregar} />
+
       <div className="grid gap-4 md:grid-cols-2">
-        <ListaSimples
-          titulo="Empresas"
-          nota="entidades empregadoras. Não se apagam se tiverem pessoas."
-          linhas={empresas.map(e => ({ id: e.id, nome: e.nome }))}
-          tabela="hr_empresas"
-          onMudou={carregar}
-        />
         <ListaSimples
           titulo="Departamentos"
           linhas={deps.map(d => ({ id: d.id, nome: d.nome }))}
           tabela="hr_departamentos"
           onMudou={carregar}
         />
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Cada empresa pratica o seu subsídio de alimentação. É aqui que se define,
+ * e toda a gente dessa empresa segue — excepto quem tiver valor próprio
+ * marcado na ficha.
+ */
+function Empresas({
+  empresas, param, onMudou,
+}: {
+  empresas: Empresa[]
+  param: Parametros
+  onMudou: () => void
+}) {
+  const toast = useToast()
+  const [novo, setNovo] = useState('')
+  const [aGuardar, setAGuardar] = useState<string | null>(null)
+
+  const guardar = async (e: Empresa, patch: Partial<Empresa>) => {
+    setAGuardar(e.id)
+    try { await guardarEmpresa(e.id, patch); onMudou() }
+    catch (err) { toast((err as Error).message, 'erro') }
+    finally { setAGuardar(null) }
+  }
+
+  return (
+    <div className="card p-4">
+      <h3 className="text-sm font-semibold text-slate-700">Empresas</h3>
+      <p className="text-xs text-slate-400">
+        Entidades empregadoras. O subsídio de alimentação definido aqui aplica-se a toda a gente
+        da empresa; quem for excepção marca-se na própria ficha.
+      </p>
+
+      <div className="mt-3 overflow-x-auto">
+        <table className="w-full min-w-[640px] text-sm">
+          <thead>
+            <tr className="text-left text-[11px] uppercase tracking-wide text-slate-400">
+              <th className="pb-1 font-medium">Empresa</th>
+              <th className="pb-1 font-medium">Subs. alimentação / dia</th>
+              <th className="pb-1 font-medium">Pago em</th>
+              <th className="pb-1 font-medium">Dias / mês</th>
+              <th className="pb-1 text-right font-medium">Por mês</th>
+              <th className="pb-1"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {empresas.map(e => {
+              const limite = e.sub_alim_cartao
+                ? param.limite_alim_cartao : param.limite_alim_dinheiro
+              const acima = e.sub_alim_dia > limite
+              return (
+                <tr key={e.id} className="border-t border-slate-100 align-top">
+                  <td className="py-1.5 pr-2">
+                    <input
+                      className="input h-9 text-sm"
+                      defaultValue={e.nome}
+                      onBlur={ev => {
+                        const nome = ev.target.value.trim()
+                        if (nome && nome !== e.nome) guardar(e, { nome })
+                      }}
+                    />
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <NumInput className="h-9 w-24 text-sm" value={e.sub_alim_dia}
+                              onChange={n => guardar(e, { sub_alim_dia: n })} />
+                    {acima && (
+                      <div className="mt-0.5 text-[11px] text-amber-600">
+                        {money(e.sub_alim_dia - limite)}/dia paga TSU
+                      </div>
+                    )}
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <select
+                      className="input h-9 text-sm"
+                      value={e.sub_alim_cartao ? 'cartao' : 'dinheiro'}
+                      onChange={ev => guardar(e, { sub_alim_cartao: ev.target.value === 'cartao' })}
+                    >
+                      <option value="cartao">Cartão</option>
+                      <option value="dinheiro">Dinheiro</option>
+                    </select>
+                    <div className="mt-0.5 text-[11px] text-slate-400">
+                      isento até {money(limite)}
+                    </div>
+                  </td>
+                  <td className="py-1.5 pr-2">
+                    <NumInput className="h-9 w-20 text-sm" value={e.sub_alim_dias_mes}
+                              onChange={n => guardar(e, { sub_alim_dias_mes: n })} />
+                  </td>
+                  <td className="py-1.5 pr-2 text-right tabular-nums text-slate-600">
+                    {money(e.sub_alim_dia * e.sub_alim_dias_mes)}
+                  </td>
+                  <td className="w-6 py-1.5">
+                    {aGuardar === e.id && <Spinner className="text-slate-400" />}
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="mt-3 flex gap-2">
+        <input className="input h-9 max-w-xs text-sm" placeholder="Nova empresa…" value={novo}
+               onChange={ev => setNovo(ev.target.value)} />
+        <button
+          className="btn-ghost shrink-0"
+          disabled={!novo.trim()}
+          onClick={async () => {
+            const nome = novo.trim()
+            setNovo('')
+            const { error } = await supabase.from('hr_empresas')
+              .insert({ nome, ordem: empresas.length + 1 })
+            if (error) toast(error.message, 'erro'); else onMudou()
+          }}
+        >
+          Juntar
+        </button>
       </div>
     </div>
   )

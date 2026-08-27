@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../lib/appState'
 import {
   agrupar, custo, fetchDepartamentos, fetchEmpregados, fetchEmpresas, fetchParametros,
-  jaSaiu, pct, somar, vaiSair,
+  jaSaiu, pct, porId, somar, vaiSair,
   type Departamento, type Empregado, type Empresa, type Grupo, type Parametros,
 } from '../lib/hr'
 import { money, dmy } from '../lib/format'
@@ -37,18 +37,34 @@ export default function RhCustos() {
     dep: Object.fromEntries(deps.map(d => [d.id, d.nome])),
   }), [empresas, hotels, deps])
 
+  const porEmpresa = useMemo(() => porId(empresas), [empresas])
   const ativas = useMemo(() => pessoas.filter(p => !jaSaiu(p)), [pessoas])
+
+  /**
+   * Rotatividade: saídas do último ano a dividir pelo efectivo médio. Só
+   * contam as saídas com data — quem foi marcado "saiu" sem data não entra,
+   * porque não se sabe em que ano foi.
+   */
+  const rotatividade = useMemo(() => {
+    const ha1ano = new Date(Date.now() - 365 * 86400000).toISOString().slice(0, 10)
+    const hoje = new Date().toISOString().slice(0, 10)
+    const saidas = pessoas.filter(
+      p => p.data_saida && p.data_saida >= ha1ano && p.data_saida <= hoje).length
+    const medio = ativas.length + saidas / 2
+    return { saidas, taxa: medio > 0 ? saidas / medio : 0 }
+  }, [pessoas, ativas])
 
   const grupos = useMemo(() => {
     if (!param) return null
     return {
-      empresa: agrupar(ativas, param, p => p.empresa_id, nomes.empresa, 'Sem empresa'),
-      hotel: agrupar(ativas, param, p => p.hotel_id, nomes.hotel, 'Sem hotel atribuído'),
-      dep: agrupar(ativas, param, p => p.departamento_id, nomes.dep, 'Sem departamento'),
+      empresa: agrupar(ativas, param, porEmpresa, p => p.empresa_id, nomes.empresa, 'Sem empresa'),
+      hotel: agrupar(ativas, param, porEmpresa, p => p.hotel_id, nomes.hotel, 'Sem hotel atribuído'),
+      dep: agrupar(ativas, param, porEmpresa, p => p.departamento_id, nomes.dep, 'Sem departamento'),
     }
-  }, [ativas, param, nomes])
+  }, [ativas, param, nomes, porEmpresa])
 
-  const total = useMemo(() => (param ? somar(ativas, param) : null), [ativas, param])
+  const total = useMemo(
+    () => (param ? somar(ativas, param, porEmpresa) : null), [ativas, param, porEmpresa])
 
   if (loading) return <Loading />
   if (erro) {
@@ -101,6 +117,16 @@ export default function RhCustos() {
                   value={v(ativas.length ? total.total / ativas.length : 0)} />
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard
+          label="Rotatividade (12 meses)"
+          value={rotatividade.saidas ? pct(rotatividade.taxa) : '—'}
+          hint={rotatividade.saidas
+            ? `${rotatividade.saidas} saídas sobre um efectivo médio de ${Math.round(ativas.length + rotatividade.saidas / 2)}`
+            : 'sem saídas com data no último ano'}
+        />
+      </div>
+
       {porPreencher.length > 0 && (
         <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
           <strong>{porPreencher.length} pessoas ainda sem vencimento.</strong> Os totais acima só
@@ -131,7 +157,7 @@ export default function RhCustos() {
               : (
                 <ul className="mt-1 space-y-1 text-sm">
                   {baixas.map(p => {
-                    const c = custo(p, param)
+                    const c = custo(p, param, porEmpresa)
                     return (
                       <li key={p.id} className="flex justify-between gap-2">
                         <span className="text-slate-700">{p.nome}</span>
@@ -158,7 +184,7 @@ export default function RhCustos() {
                     <li key={p.id} className="flex justify-between gap-2">
                       <span className="text-slate-700">{p.nome}</span>
                       <span className="tabular-nums text-slate-500">
-                        {dmy(p.data_saida!)} · −{money(custo(p, param).total * f)}
+                        {dmy(p.data_saida!)} · −{money(custo(p, param, porEmpresa).total * f)}
                       </span>
                     </li>
                   ))}

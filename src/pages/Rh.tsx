@@ -2,10 +2,11 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useApp } from '../lib/appState'
 import { useAuth } from '../lib/auth'
 import {
-  ESTADOS, TIPOS_CONTRATO, apagarEmpregado, criarEmpregado, custo,
+  ESTADOS, TIPOS_CONTRATO, alimentacaoDe, apagarEmpregado, criarEmpregado, custo,
   fetchDepartamentos, fetchEmpregados, fetchEmpresas, fetchParametros,
-  guardarEmpregado, jaSaiu, pct, somar, vaiSair,
-  type Departamento, type Empregado, type Empresa, type Estado, type Parametros,
+  guardarEmpregado, hotelCurto, jaSaiu, pct, porId, somar, vaiSair,
+  type Departamento, type Empregado, type Empresa, type Empresas, type Estado,
+  type Parametros,
 } from '../lib/hr'
 import { money, dmy } from '../lib/format'
 import { Loading, Modal, NumInput, Spinner, StatCard, useToast } from '../components/ui'
@@ -52,8 +53,13 @@ export default function Rh() {
       .finally(() => setLoading(false))
   }, [])
 
+  const porEmpresa = useMemo(() => porId(empresas), [empresas])
   const nomeEmpresa = useMemo(
     () => Object.fromEntries(empresas.map(e => [e.id, e.nome])), [empresas])
+  const nomeHotel = useMemo(
+    () => Object.fromEntries(hotels.map(h => [h.id, h.name])), [hotels])
+  const nomeDep = useMemo(
+    () => Object.fromEntries(deps.map(d => [d.id, d.nome])), [deps])
   const funcoes = useMemo(
     () => [...new Set(pessoas.map(p => p.funcao).filter(Boolean))].sort() as string[],
     [pessoas])
@@ -86,8 +92,8 @@ export default function Rh() {
   }, [pessoas, busca, fEmpresa, fHotel, fDep, fEstado, semSalario])
 
   const totais = useMemo(
-    () => (param ? somar(filtradas.filter(p => !jaSaiu(p)), param) : null),
-    [filtradas, param])
+    () => (param ? somar(filtradas.filter(p => !jaSaiu(p)), param, porEmpresa) : null),
+    [filtradas, param, porEmpresa])
 
   const porPreencher = pessoas.filter(p => !jaSaiu(p) && p.vencimento_base <= 0).length
   const aSair = pessoas.filter(p => vaiSair(p)).length
@@ -108,7 +114,9 @@ export default function Rh() {
     <div className="space-y-3">
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Pessoas ao serviço" value={totais?.pessoas ?? 0}
-                  hint={`${pessoas.length} fichas no total`} />
+                  hint={emBaixa || aSair
+                    ? `inclui ${emBaixa} em baixa · ${aSair} com saída marcada`
+                    : 'todas activas'} />
         <StatCard label="Custo de empresa / mês" value={money(totais?.total ?? 0)} tone="brand"
                   hint={`${money(totais?.bruto ?? 0)} + ${money(totais?.encargos ?? 0)} de encargos`} />
         <StatCard label="Custo / ano" value={money((totais?.total ?? 0) * 12)}
@@ -117,7 +125,7 @@ export default function Rh() {
           label="Por preencher"
           value={porPreencher}
           tone={porPreencher ? 'warn' : 'default'}
-          hint={`sem vencimento · ${emBaixa} em baixa · ${aSair} a sair`}
+          hint="pessoas ainda sem vencimento definido" 
         />
       </div>
 
@@ -155,22 +163,22 @@ export default function Rh() {
 
       {/* lista */}
       <div className="card overflow-x-auto">
-        <table className="w-full min-w-[1050px] text-sm">
+        <table className="w-full min-w-[1280px] text-sm">
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
               <th className="th w-12">Nº</th>
-              <th className="th">Nome</th>
-              <th className="th w-40">Função</th>
-              <th className="th w-44">Departamento</th>
-              <th className="th w-44">Hotel</th>
-              <th className="th w-32">Estado</th>
+              <th className="th min-w-[220px]">Nome</th>
+              <th className="th w-56">Função</th>
+              <th className="th w-48">Departamento</th>
+              <th className="th w-48">Hotel</th>
+              <th className="th w-36">Estado</th>
               <th className="th w-28 text-right">Base</th>
               <th className="th w-32 text-right">Custo / mês</th>
             </tr>
           </thead>
           <tbody>
             {filtradas.map(p => {
-              const c = custo(p, param)
+              const c = custo(p, param, porEmpresa)
               const saiu = jaSaiu(p)
               return (
                 <tr key={p.id} className={`border-b border-slate-100 ${saiu ? 'opacity-50' : ''}`}>
@@ -187,10 +195,12 @@ export default function Rh() {
                   </td>
                   <td className="td">
                     <input className="input h-8 text-sm" list="hr-funcoes" value={p.funcao ?? ''}
+                           title={p.funcao ?? ''}
                            onChange={e => alterar(p.id, { funcao: e.target.value || null })} />
                   </td>
                   <td className="td">
                     <select className="input h-8 text-sm" value={p.departamento_id ?? ''}
+                            title={nomeDep[p.departamento_id ?? ''] ?? ''}
                             onChange={e => alterar(p.id, { departamento_id: e.target.value || null })}>
                       <option value="">—</option>
                       {deps.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
@@ -198,9 +208,12 @@ export default function Rh() {
                   </td>
                   <td className="td">
                     <select className="input h-8 text-sm" value={p.hotel_id ?? ''}
+                            title={nomeHotel[p.hotel_id ?? ''] ?? ''}
                             onChange={e => alterar(p.id, { hotel_id: e.target.value || null })}>
                       <option value="">—</option>
-                      {hotels.map(h => <option key={h.id} value={h.id}>{h.name}</option>)}
+                      {hotels.map(h => (
+                        <option key={h.id} value={h.id}>{hotelCurto(h.name)}</option>
+                      ))}
                     </select>
                   </td>
                   <td className="td">
@@ -236,7 +249,7 @@ export default function Rh() {
       {ficha && (
         <Ficha
           pessoa={pessoas.find(p => p.id === ficha)!}
-          param={param} empresas={empresas} deps={deps} funcoes={funcoes}
+          param={param} empresas={empresas} porEmpresa={porEmpresa} deps={deps} funcoes={funcoes}
           hoteis={hotels.map(h => ({ id: h.id, nome: h.name }))}
           onFechar={() => setFicha(null)}
           onMudar={patch => alterar(ficha, patch)}
@@ -284,11 +297,12 @@ function semChaves(e: Empregado) {
 /* --------------------------------------------------------------------- ficha */
 
 function Ficha({
-  pessoa, param, empresas, deps, hoteis, funcoes, onFechar, onMudar, onApagar,
+  pessoa, param, empresas, porEmpresa, deps, hoteis, funcoes, onFechar, onMudar, onApagar,
 }: {
   pessoa: Empregado
   param: Parametros
   empresas: Empresa[]
+  porEmpresa: Empresas
   deps: Departamento[]
   hoteis: { id: string; nome: string }[]
   funcoes: string[]
@@ -296,7 +310,9 @@ function Ficha({
   onMudar: (p: Partial<Empregado>) => void
   onApagar: () => void
 }) {
-  const c = custo(pessoa, param)
+  const c = custo(pessoa, param, porEmpresa)
+  const alim = alimentacaoDe(pessoa, porEmpresa)
+  const daEmpresa = porEmpresa[pessoa.empresa_id]
   const campo = (k: keyof Empregado) => (n: number) => onMudar({ [k]: n } as Partial<Empregado>)
 
   return (
@@ -384,19 +400,59 @@ function Ficha({
             <Campo rot="Meses de subs. de Natal">
               <NumInput value={pessoa.meses_natal} onChange={campo('meses_natal')} />
             </Campo>
-            <Campo rot="Subs. alimentação / dia">
-              <NumInput value={pessoa.sub_alim_dia} onChange={campo('sub_alim_dia')} />
-            </Campo>
-            <Campo rot="Dias por mês">
-              <NumInput value={pessoa.sub_alim_dias_mes} onChange={campo('sub_alim_dias_mes')} />
-            </Campo>
-            <Campo rot="Pago em">
-              <select className="input" value={pessoa.sub_alim_cartao ? 'cartao' : 'dinheiro'}
-                      onChange={e => onMudar({ sub_alim_cartao: e.target.value === 'cartao' })}>
-                <option value="cartao">Cartão refeição (isento até {money(param.limite_alim_cartao)}/dia)</option>
-                <option value="dinheiro">Dinheiro (isento até {money(param.limite_alim_dinheiro)}/dia)</option>
-              </select>
-            </Campo>
+            <div className="rounded-lg border border-slate-200 bg-slate-50/60 p-3 sm:col-span-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Subsídio de alimentação
+                </div>
+                <label className="flex items-center gap-1.5 text-sm text-slate-600">
+                  <input
+                    type="checkbox"
+                    checked={alim.proprio}
+                    onChange={ev => onMudar(ev.target.checked
+                      // ao destacar da empresa, começa-se pelos valores dela
+                      ? { sub_alim_dia: alim.dia, sub_alim_cartao: alim.cartao,
+                          sub_alim_dias_mes: alim.dias }
+                      : { sub_alim_dia: null, sub_alim_cartao: null, sub_alim_dias_mes: null })}
+                  />
+                  valor próprio
+                </label>
+              </div>
+
+              <div className="mt-2 grid gap-3 sm:grid-cols-3">
+                <div>
+                  <label className="label">Por dia (€)</label>
+                  <NumInput value={alim.dia} disabled={!alim.proprio}
+                            onChange={campo('sub_alim_dia')} />
+                </div>
+                <div>
+                  <label className="label">Dias por mês</label>
+                  <NumInput value={alim.dias} disabled={!alim.proprio}
+                            onChange={campo('sub_alim_dias_mes')} />
+                </div>
+                <div>
+                  <label className="label">Pago em</label>
+                  <select className="input" value={alim.cartao ? 'cartao' : 'dinheiro'}
+                          disabled={!alim.proprio}
+                          onChange={ev => onMudar({ sub_alim_cartao: ev.target.value === 'cartao' })}>
+                    <option value="cartao">Cartão refeição</option>
+                    <option value="dinheiro">Dinheiro</option>
+                  </select>
+                </div>
+              </div>
+
+              <p className="mt-1.5 text-xs text-slate-500">
+                {alim.proprio
+                  ? <>Excepção a {daEmpresa?.nome ?? 'esta empresa'}, que pratica{' '}
+                      {money(daEmpresa?.sub_alim_dia ?? 0)}/dia em{' '}
+                      {daEmpresa?.sub_alim_cartao ? 'cartão' : 'dinheiro'}.
+                      Desliga para voltar à regra da empresa.</>
+                  : <>A seguir {daEmpresa?.nome ?? 'a empresa'}. Se lá mudares o valor, esta pessoa
+                      acompanha. Liga só se esta pessoa for excepção.</>}
+                {' '}Isento de TSU até{' '}
+                {money(alim.cartao ? param.limite_alim_cartao : param.limite_alim_dinheiro)}/dia.
+              </p>
+            </div>
             <Campo rot="Subsídio de línguas">
               <NumInput value={pessoa.sub_linguas} onChange={campo('sub_linguas')} />
             </Campo>

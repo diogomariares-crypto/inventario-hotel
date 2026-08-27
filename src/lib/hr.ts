@@ -19,7 +19,19 @@ export const ESTADOS: { v: Estado; rot: string; desc: string }[] = [
 
 export const estadoRotulo = (e: Estado) => ESTADOS.find(x => x.v === e)?.rot ?? e
 
-export interface Empresa { id: string; nome: string; ordem: number; ativa: boolean }
+export interface Empresa {
+  id: string
+  nome: string
+  ordem: number
+  ativa: boolean
+  /** Subsídio de alimentação praticado nesta empresa — o valor por defeito. */
+  sub_alim_dia: number
+  sub_alim_cartao: boolean
+  sub_alim_dias_mes: number
+}
+
+/** Empresas indexadas por id, como o cálculo precisa delas. */
+export type Empresas = Record<string, Empresa>
 export interface Departamento { id: string; nome: string; ordem: number }
 
 export interface Parametros {
@@ -48,9 +60,10 @@ export interface Empregado {
   data_saida: string | null
   tipo_contrato: string | null
   vencimento_base: number
-  sub_alim_dia: number
-  sub_alim_cartao: boolean
-  sub_alim_dias_mes: number
+  /** null = segue o valor da empresa. Só se preenche quando é excepção. */
+  sub_alim_dia: number | null
+  sub_alim_cartao: boolean | null
+  sub_alim_dias_mes: number | null
   meses_ferias: number
   meses_natal: number
   sub_linguas: number
@@ -62,6 +75,25 @@ export interface Empregado {
   encargos_manual: number | null
   notas: string | null
 }
+
+/** O subsídio que se aplica à pessoa: o dela se o tiver, senão o da empresa. */
+export function alimentacaoDe(e: Empregado, empresas: Empresas) {
+  const c = empresas[e.empresa_id]
+  return {
+    dia: e.sub_alim_dia ?? c?.sub_alim_dia ?? 0,
+    cartao: e.sub_alim_cartao ?? c?.sub_alim_cartao ?? true,
+    dias: e.sub_alim_dias_mes ?? c?.sub_alim_dias_mes ?? 22,
+    /** true quando a pessoa foge à regra da empresa. */
+    proprio: e.sub_alim_dia != null || e.sub_alim_cartao != null || e.sub_alim_dias_mes != null,
+  }
+}
+
+/**
+ * Nome curto do hotel, para as caixas estreitas da lista. Dentro da app do
+ * grupo o prefixo "chic&basic" não distingue nada e só rouba espaço.
+ */
+export const hotelCurto = (n: string) =>
+  n.replace(/^chic&basic\s+/i, '').replace(/\s+Boutique Hotel/i, '')
 
 export const TIPOS_CONTRATO = [
   'Sem termo', 'Termo certo', 'Termo incerto', 'Muito curta duração',
@@ -103,7 +135,7 @@ export const vaiSair = (e: Empregado, dias = 60) => {
   return e.data_saida <= limite
 }
 
-export function custo(e: Empregado, p: Parametros): Custo {
+export function custo(e: Empregado, p: Parametros, empresas: Empresas): Custo {
   const mes = (anual: number) => anual / 12
   const taxa = (e.taxa_tsu ?? p.tsu) + p.seguro_at + p.fundos
 
@@ -112,13 +144,14 @@ export function custo(e: Empregado, p: Parametros): Custo {
   const complementos = mes(
     (e.sub_linguas + e.isencao_horario + e.outros_subsidios) * p.meses_complementos)
   const abono = mes(e.abono_falhas * p.meses_abono)
-  const alimentacao = mes(e.sub_alim_dia * e.sub_alim_dias_mes * p.meses_alimentacao)
+  const alim = alimentacaoDe(e, empresas)
+  const alimentacao = mes(alim.dia * alim.dias * p.meses_alimentacao)
 
   // O subsídio de alimentação e o abono para falhas só pagam TSU na parte que
   // ultrapassa os limites isentos — daí não entrarem inteiros na base.
-  const limiteDia = e.sub_alim_cartao ? p.limite_alim_cartao : p.limite_alim_dinheiro
+  const limiteDia = alim.cartao ? p.limite_alim_cartao : p.limite_alim_dinheiro
   const alimTributavel = mes(
-    Math.max(e.sub_alim_dia - limiteDia, 0) * e.sub_alim_dias_mes * p.meses_alimentacao)
+    Math.max(alim.dia - limiteDia, 0) * alim.dias * p.meses_alimentacao)
   const abonoTributavel = mes(
     Math.max(e.abono_falhas - e.vencimento_base * p.isencao_abono_pct, 0) * p.meses_abono)
 
@@ -153,10 +186,10 @@ function montar(
 }
 
 /** Junta uma lista de pessoas num só total. */
-export function somar(es: Empregado[], p: Parametros) {
+export function somar(es: Empregado[], p: Parametros, empresas: Empresas) {
   const t = { pessoas: es.length, bruto: 0, encargos: 0, total: 0, pleno: 0 }
   for (const e of es) {
-    const c = custo(e, p)
+    const c = custo(e, p, empresas)
     t.bruto += c.bruto; t.encargos += c.encargos; t.total += c.total; t.pleno += c.pleno
   }
   return t
@@ -166,7 +199,7 @@ export type Grupo = ReturnType<typeof somar> & { id: string; nome: string }
 
 /** Agrupa por empresa, hotel ou departamento, já ordenado do mais caro. */
 export function agrupar(
-  es: Empregado[], p: Parametros,
+  es: Empregado[], p: Parametros, empresas: Empresas,
   chave: (e: Empregado) => string | null,
   nomes: Record<string, string>,
   semNome: string,
@@ -174,7 +207,7 @@ export function agrupar(
   const baldes: Record<string, Empregado[]> = {}
   for (const e of es) (baldes[chave(e) ?? '—'] ??= []).push(e)
   return Object.entries(baldes)
-    .map(([id, lista]) => ({ id, nome: id === '—' ? semNome : (nomes[id] ?? semNome), ...somar(lista, p) }))
+    .map(([id, lista]) => ({ id, nome: id === '—' ? semNome : (nomes[id] ?? semNome), ...somar(lista, p, empresas) }))
     .sort((a, b) => b.total - a.total)
 }
 
@@ -183,7 +216,19 @@ export function agrupar(
 export async function fetchEmpresas(): Promise<Empresa[]> {
   const { data, error } = await supabase.from('hr_empresas').select('*').order('ordem')
   if (error) throw error
-  return data as Empresa[]
+  return (data ?? []).map(r => ({
+    ...(r as unknown as Empresa),
+    sub_alim_dia: Number(r.sub_alim_dia ?? 0),
+    sub_alim_dias_mes: Number(r.sub_alim_dias_mes ?? 22),
+  }))
+}
+
+export const porId = (es: Empresa[]): Empresas =>
+  Object.fromEntries(es.map(e => [e.id, e]))
+
+export async function guardarEmpresa(id: string, patch: Partial<Empresa>) {
+  const { error } = await supabase.from('hr_empresas').update(patch).eq('id', id)
+  if (error) throw error
 }
 
 export async function fetchDepartamentos(): Promise<Departamento[]> {
@@ -206,8 +251,8 @@ function normalizar(r: Record<string, unknown>): Empregado {
     ...(r as unknown as Empregado),
     numero: on('numero'),
     vencimento_base: n('vencimento_base'),
-    sub_alim_dia: n('sub_alim_dia'),
-    sub_alim_dias_mes: n('sub_alim_dias_mes'),
+    sub_alim_dia: on('sub_alim_dia'),
+    sub_alim_dias_mes: on('sub_alim_dias_mes'),
     meses_ferias: n('meses_ferias'),
     meses_natal: n('meses_natal'),
     sub_linguas: n('sub_linguas'),

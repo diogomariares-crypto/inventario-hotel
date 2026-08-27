@@ -1,4 +1,6 @@
-import { createContext, useCallback, useContext, useRef, useState, type ReactNode } from 'react'
+import {
+  createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode,
+} from 'react'
 
 /* ---------------------------------- Toasts --------------------------------- */
 type Toast = { id: number; msg: string; kind: 'ok' | 'erro' | 'info' }
@@ -86,6 +88,41 @@ export function Modal({
         {children}
       </div>
     </div>
+  )
+}
+
+/**
+ * Caixa de texto que cresce em altura para mostrar tudo o que lá está, em vez
+ * de cortar a meio. Serve para colunas estreitas onde os valores são longos
+ * ("Responsável de Manutenção"). O Enter fecha a edição em vez de meter linha
+ * nova — dentro de uma tabela é isso que se espera.
+ */
+export function TextoAuto({
+  value, onChange, className = '', ...rest
+}: {
+  value: string
+  onChange: (v: string) => void
+  className?: string
+} & Omit<React.TextareaHTMLAttributes<HTMLTextAreaElement>, 'value' | 'onChange'>) {
+  const ref = useRef<HTMLTextAreaElement>(null)
+  const ajustar = (el: HTMLTextAreaElement | null) => {
+    if (!el) return
+    el.style.height = 'auto'
+    el.style.height = `${el.scrollHeight}px`
+  }
+  useEffect(() => { ajustar(ref.current) }, [value])
+  return (
+    <textarea
+      {...rest}
+      ref={ref}
+      rows={1}
+      value={value}
+      className={`input resize-none overflow-hidden leading-snug ${className}`}
+      onChange={e => { onChange(e.target.value); ajustar(e.target) }}
+      onKeyDown={e => {
+        if (e.key === 'Enter') { e.preventDefault(); e.currentTarget.blur() }
+      }}
+    />
   )
 }
 

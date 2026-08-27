@@ -9,7 +9,7 @@ import {
   type Parametros,
 } from '../lib/hr'
 import { money, dmy } from '../lib/format'
-import { Loading, Modal, NumInput, Spinner, StatCard, useToast } from '../components/ui'
+import { Loading, Modal, NumInput, Spinner, StatCard, TextoAuto, useToast } from '../components/ui'
 
 const CORES_ESTADO: Record<Estado, string> = {
   activo: 'bg-slate-100 text-slate-600',
@@ -162,18 +162,26 @@ export default function Rh() {
       </div>
 
       {/* lista */}
-      <div className="card overflow-x-auto">
-        <table className="w-full min-w-[1280px] text-sm">
+      <div className="card">
+        <table className="w-full table-fixed text-sm">
+          <colgroup>
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '22%' }} />
+            <col style={{ width: '15%' }} />
+            <col style={{ width: '13%' }} />
+            <col style={{ width: '11%' }} />
+            <col style={{ width: '8%' }} />
+            <col style={{ width: '9%' }} />
+          </colgroup>
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
-              <th className="th w-12">Nº</th>
-              <th className="th min-w-[220px]">Nome</th>
-              <th className="th w-56">Função</th>
-              <th className="th w-48">Departamento</th>
-              <th className="th w-48">Hotel</th>
-              <th className="th w-36">Estado</th>
-              <th className="th w-28 text-right">Base</th>
-              <th className="th w-32 text-right">Custo / mês</th>
+              <th className="th">Nome</th>
+              <th className="th">Função</th>
+              <th className="th">Departamento</th>
+              <th className="th">Hotel</th>
+              <th className="th">Estado</th>
+              <th className="th text-right">Base</th>
+              <th className="th text-right">Custo/mês</th>
             </tr>
           </thead>
           <tbody>
@@ -182,10 +190,14 @@ export default function Rh() {
               const saiu = jaSaiu(p)
               return (
                 <tr key={p.id} className={`border-b border-slate-100 ${saiu ? 'opacity-50' : ''}`}>
-                  <td className="td tabular-nums text-slate-400">{p.numero ?? ''}</td>
-                  <td className="td">
+                  <td className="td align-top">
                     <button className="text-left font-medium text-slate-800 hover:text-brand-700"
                             onClick={() => setFicha(p.id)}>
+                      {p.numero != null && (
+                        <span className="mr-1.5 tabular-nums font-normal text-slate-400">
+                          {p.numero}
+                        </span>
+                      )}
                       {p.nome}
                     </button>
                     <div className="text-[11px] text-slate-400">
@@ -193,21 +205,23 @@ export default function Rh() {
                       {vaiSair(p) && <span className="ml-1 text-amber-600">· sai a {dmy(p.data_saida!)}</span>}
                     </div>
                   </td>
-                  <td className="td">
-                    <input className="input h-8 text-sm" list="hr-funcoes" value={p.funcao ?? ''}
-                           title={p.funcao ?? ''}
-                           onChange={e => alterar(p.id, { funcao: e.target.value || null })} />
+                  <td className="td align-top">
+                    <CampoFuncao
+                      valor={p.funcao ?? ''}
+                      sugestoes={funcoes}
+                      onMudar={v => alterar(p.id, { funcao: v || null })}
+                    />
                   </td>
-                  <td className="td">
-                    <select className="input h-8 text-sm" value={p.departamento_id ?? ''}
+                  <td className="td align-top">
+                    <select className="input px-2 py-1.5 text-sm" value={p.departamento_id ?? ''}
                             title={nomeDep[p.departamento_id ?? ''] ?? ''}
                             onChange={e => alterar(p.id, { departamento_id: e.target.value || null })}>
                       <option value="">—</option>
                       {deps.map(d => <option key={d.id} value={d.id}>{d.nome}</option>)}
                     </select>
                   </td>
-                  <td className="td">
-                    <select className="input h-8 text-sm" value={p.hotel_id ?? ''}
+                  <td className="td align-top">
+                    <select className="input px-2 py-1.5 text-sm" value={p.hotel_id ?? ''}
                             title={nomeHotel[p.hotel_id ?? ''] ?? ''}
                             onChange={e => alterar(p.id, { hotel_id: e.target.value || null })}>
                       <option value="">—</option>
@@ -216,20 +230,20 @@ export default function Rh() {
                       ))}
                     </select>
                   </td>
-                  <td className="td">
+                  <td className="td align-top">
                     <select
-                      className={`input h-8 text-sm ${CORES_ESTADO[p.estado]}`}
+                      className={`input px-2 py-1.5 text-sm ${CORES_ESTADO[p.estado]}`}
                       value={p.estado}
                       onChange={e => alterar(p.id, { estado: e.target.value as Estado })}
                     >
                       {ESTADOS.map(e => <option key={e.v} value={e.v}>{e.rot}</option>)}
                     </select>
                   </td>
-                  <td className="td text-right">
-                    <NumInput className="h-8 w-24 text-sm" value={p.vencimento_base}
+                  <td className="td align-top text-right">
+                    <NumInput className="px-2 py-1.5 text-sm" value={p.vencimento_base}
                               onChange={n => alterar(p.id, { vencimento_base: n })} />
                   </td>
-                  <td className="td text-right tabular-nums">
+                  <td className="td align-top text-right tabular-nums">
                     <div className="font-semibold text-slate-800">{money(c.total)}</div>
                     {p.estado === 'baixa' && c.pleno > c.total && (
                       <div className="text-[11px] text-amber-600">normal {money(c.pleno)}</div>
@@ -240,7 +254,6 @@ export default function Rh() {
             })}
           </tbody>
         </table>
-        <datalist id="hr-funcoes">{funcoes.map(f => <option key={f} value={f} />)}</datalist>
         {filtradas.length === 0 && (
           <div className="p-8 text-center text-sm text-slate-500">Ninguém com estes filtros.</div>
         )}
@@ -282,6 +295,56 @@ export default function Rh() {
         {param.fundos > 0 && <> + fundos {pct(param.fundos)}</>}.
         As taxas e os limites isentos mudam-se em Definições.
       </p>
+    </div>
+  )
+}
+
+/**
+ * Função da pessoa: cresce para mostrar o texto todo e sugere as funções que
+ * já existem na casa, para não se andar a escrever "Empregado de Andares"
+ * vinte vezes nem a inventar variantes que depois não agrupam.
+ */
+function CampoFuncao({
+  valor, sugestoes, onMudar,
+}: {
+  valor: string
+  sugestoes: string[]
+  onMudar: (v: string) => void
+}) {
+  const [aberto, setAberto] = useState(false)
+  const filtradas = useMemo(() => {
+    const q = valor.trim().toLowerCase()
+    return sugestoes
+      .filter(f => f.toLowerCase() !== q && (!q || f.toLowerCase().includes(q)))
+      .slice(0, 6)
+  }, [valor, sugestoes])
+
+  return (
+    <div className="relative">
+      <TextoAuto
+        className="px-2 py-1.5 text-sm"
+        value={valor}
+        onChange={onMudar}
+        onFocus={() => setAberto(true)}
+        onBlur={() => setAberto(false)}
+      />
+      {aberto && filtradas.length > 0 && (
+        <ul className="absolute inset-x-0 top-full z-20 mt-1 max-h-44 overflow-y-auto rounded-lg
+                       border border-slate-200 bg-white py-1 shadow-lg">
+          {filtradas.map(f => (
+            <li key={f}>
+              <button
+                type="button"
+                className="block w-full px-2.5 py-1 text-left text-sm text-slate-700 hover:bg-brand-50"
+                // no mouseDown para o campo não perder o foco antes do clique contar
+                onMouseDown={ev => { ev.preventDefault(); onMudar(f); setAberto(false) }}
+              >
+                {f}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   )
 }

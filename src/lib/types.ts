@@ -66,6 +66,8 @@ export interface Count {
   amount_paid_eur: number
   closing_qty: number
   closing_counted: boolean
+  /** Parcelas somadas durante a contagem (modo somar); a soma dá closing_qty. */
+  parcelas: number[]
   quebras: number
   motivo: string | null
   comentario: string | null

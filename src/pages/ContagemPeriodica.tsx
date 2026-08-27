@@ -78,6 +78,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
           amount_paid_eur: c ? Number(c.amount_paid_eur) : 0,
           closing_qty: c ? Number(c.closing_qty) : 0,
           closing_counted: c?.closing_counted ?? false,
+          parcelas: (c?.parcelas ?? []).map(Number),
           quebras: c ? Number(c.quebras) : 0,
           motivo: c?.motivo ?? null,
           comentario: c?.comentario ?? null,

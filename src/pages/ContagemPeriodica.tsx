@@ -10,6 +10,7 @@ import type { Count, Department, Item, Period, PeriodKind } from '../lib/types'
 import { addDays, dmy, lastDayOfMonth, money, qty, todayISO } from '../lib/format'
 import { Loading, Modal, NumInput, Spinner, useToast } from '../components/ui'
 import { supabase } from '../lib/supabase'
+import ARepor from '../components/ARepor'
 
 type Row = Count & { item: Item }
 
@@ -36,6 +37,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
   const [editar, setEditar] = useState<{ inicio: string; data: string; linhas: number } | null>(null)
   const [busca, setBusca] = useState('')
   const timers = useRef<Record<string, ReturnType<typeof setTimeout>>>({})
+  const [recarregar, setRecarregar] = useState(0)
   const rowsRef = useRef<Record<string, Row>>({})
   rowsRef.current = rows
 
@@ -92,7 +94,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
       rowsRef.current = next
     })()
     return () => { alive = false }
-  }, [period?.id, items])
+  }, [period?.id, items, recarregar])
 
   /* -------------------------------- realtime ------------------------------- */
   useEffect(() => {
@@ -537,6 +539,17 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
               {totals.negativos} {totals.negativos === 1 ? 'linha tem' : 'linhas têm'} consumo negativo
               (inventário final maior do que inicial + entradas). Confirma a contagem.
             </p>
+          )}
+
+          {hotelId && (
+            <ARepor
+              dept={dept}
+              hotelId={hotelId}
+              editavel={editable}
+              itens={items}
+              email={email}
+              aoEncomendar={() => setRecarregar(n => n + 1)}
+            />
           )}
         </>
       )}

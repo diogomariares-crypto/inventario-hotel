@@ -19,6 +19,8 @@ export interface Pagina {
   soPa?: boolean
   /** Só visível a quem tem o perfil de recursos humanos. */
   soRh?: boolean
+  /** Só visível a quem pode ver custos de lavandaria. */
+  soLav?: boolean
 }
 
 export interface Modulo {
@@ -29,6 +31,8 @@ export interface Modulo {
   soAdmin?: boolean
   /** Só visível a quem tem o perfil de recursos humanos. */
   soRh?: boolean
+  /** Só visível a quem pode ver custos de lavandaria. */
+  soLav?: boolean
   paginas: Pagina[]
 }
 
@@ -72,6 +76,15 @@ export const MODULOS: Modulo[] = [
       { to: '/historico', label: 'Histórico' },
       { to: '/itens', label: 'Itens', soAdmin: true },
       { to: '/dados', label: 'Importar/Exportar', soAdmin: true },
+    ],
+  },
+  {
+    id: 'lavandaria',
+    label: 'Lavandaria',
+    icone: '⬗',
+    soLav: true,
+    paginas: [
+      { to: '/lavandaria', label: 'Custos' },
     ],
   },
   {

@@ -24,6 +24,7 @@ import Utilizadores from './pages/Utilizadores'
 import Rh from './pages/Rh'
 import RhCustos from './pages/RhCustos'
 import RhDefinicoes from './pages/RhDefinicoes'
+import Lavandaria from './pages/Lavandaria'
 import Dados from './pages/Dados'
 
 function SoAdmin({ children }: { children: React.ReactNode }) {
@@ -44,6 +45,11 @@ function SoPa({ children }: { children: React.ReactNode }) {
 function SoRh({ children }: { children: React.ReactNode }) {
   const { podeVerRh } = useAuth()
   return podeVerRh ? <>{children}</> : <Navigate to="/" replace />
+}
+
+function SoLav({ children }: { children: React.ReactNode }) {
+  const { podeVerLavandaria } = useAuth()
+  return podeVerLavandaria ? <>{children}</> : <Navigate to="/" replace />
 }
 
 function Interior() {
@@ -85,6 +91,7 @@ function Interior() {
         <Route path="/rh" element={<SoRh><Rh /></SoRh>} />
         <Route path="/rh-custos" element={<SoRh><RhCustos /></SoRh>} />
         <Route path="/rh-definicoes" element={<SoAdmin><RhDefinicoes /></SoAdmin>} />
+        <Route path="/lavandaria" element={<SoLav><Lavandaria /></SoLav>} />
         <Route path="/conta" element={<Conta />} />
         <Route path="/historico" element={<Historico />} />
         <Route path="/itens" element={<SoAdmin><Itens /></SoAdmin>} />

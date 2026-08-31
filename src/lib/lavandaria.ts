@@ -6,6 +6,7 @@
  * divergido — havia faturas com 3164 peças a mostrar "0 peças por quarto".
  */
 import { supabase } from './supabase'
+import { addDays } from './format'
 
 export type Seccao = 'alojamento' | 'restauracao' | 'outros'
 
@@ -200,4 +201,57 @@ export async function garantirArtigos(nomes: string[]) {
   const { error } = await supabase.from('lav_artigos')
     .upsert(nomes.map(nome => ({ nome })), { onConflict: 'nome', ignoreDuplicates: true })
   if (error) throw error
+}
+
+/* ------------------------------------------------------- quartos dos turnos */
+
+/**
+ * A fatura da ELIS fecha ao sábado mas cobra a semana inteira: os quartos que
+ * lá vêm correspondem às sete noites, do primeiro dia do período até ao dia
+ * seguinte ao da recolha. Comparámos sete faturas com os turnos e cinco delas
+ * batem dentro de ±6 quartos (~1%); as duas que não batem têm erro conhecido
+ * nos turnos.
+ */
+const NOITE_EXTRA = 1
+
+export interface Ocupacao {
+  /** Soma dos quartos ocupados nas noites do período. */
+  quartos: number
+  noites: string[]
+  faltam: string[]
+  /** Dias com um valor tão fora do normal que quase de certeza é gralha. */
+  suspeitos: { dia: string; quartos: number }[]
+}
+
+export async function ocupacaoDoPeriodo(
+  hotelId: string, inicio: string, fim: string,
+): Promise<Ocupacao> {
+  const ultimo = addDays(fim, NOITE_EXTRA)
+  const noites: string[] = []
+  for (let d = inicio; d <= ultimo; d = addDays(d, 1)) noites.push(d)
+
+  const { data, error } = await supabase
+    .from('occupancy')
+    .select('report_date, occ_rooms')
+    .eq('hotel_id', hotelId)
+    .eq('day_offset', 0)           // o próprio dia; os outros offsets são previsão
+    .gte('report_date', inicio)
+    .lte('report_date', ultimo)
+  if (error) throw error
+
+  const porDia: Record<string, number> = {}
+  for (const r of data ?? []) porDia[r.report_date] = Number(r.occ_rooms ?? 0)
+
+  const valores = Object.values(porDia).sort((a, b) => a - b)
+  const mediana = valores.length ? valores[Math.floor(valores.length / 2)] : 0
+  const suspeitos = Object.entries(porDia)
+    .filter(([, v]) => mediana > 0 && v > mediana * 3)
+    .map(([dia, quartos]) => ({ dia, quartos }))
+
+  return {
+    quartos: Object.values(porDia).reduce((a, b) => a + b, 0),
+    noites,
+    faltam: noites.filter(d => !(d in porDia)),
+    suspeitos,
+  }
 }

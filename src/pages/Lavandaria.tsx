@@ -3,9 +3,9 @@ import { useApp } from '../lib/appState'
 import { useAuth } from '../lib/auth'
 import {
   MESES_CURTOS, SECCOES, anoDe, apagarFatura, corSeccao, criarFatura, fetchArtigos,
-  fetchLinhas, fetchPeriodos, garantirArtigos, gravarLinhas, mesDe, rotSeccao,
-  semanaISO, somar, variacao,
-  type Artigo, type Linha, type Periodo, type Seccao,
+  fetchLinhas, fetchPeriodos, garantirArtigos, gravarLinhas, mesDe, ocupacaoDoPeriodo,
+  rotSeccao, semanaISO, somar, variacao,
+  type Artigo, type Linha, type Ocupacao, type Periodo, type Seccao,
 } from '../lib/lavandaria'
 import { dmy, money, qty } from '../lib/format'
 import { Loading, Modal, NumInput, StatCard, useToast } from '../components/ui'
@@ -549,6 +549,64 @@ const Mini = ({ rot, v }: { rot: string; v: string }) => (
   </div>
 )
 
+/**
+ * O que os turnos dizem sobre o período escolhido. Mostra-se sempre de onde
+ * veio o número e o que ficou de fora, porque um total silenciosamente
+ * incompleto estraga o €/quarto sem ninguém dar por isso.
+ */
+function DosTurnos({
+  o, aBuscar, manuais, onUsar,
+}: {
+  o: Ocupacao | null
+  aBuscar: boolean
+  manuais: boolean
+  onUsar: () => void
+}) {
+  if (aBuscar) {
+    return <p className="mt-2 text-xs text-slate-400">a ver os turnos…</p>
+  }
+  if (!o) return null
+
+  if (o.quartos === 0) {
+    return (
+      <p className="mt-2 text-xs text-amber-700">
+        Não há relatórios de turno para estas datas — escreve os quartos à mão.
+      </p>
+    )
+  }
+
+  const completo = o.faltam.length === 0 && o.suspeitos.length === 0
+  return (
+    <div className={`mt-2 rounded-lg px-3 py-2 text-xs ${
+      completo ? 'bg-slate-50 text-slate-600' : 'bg-amber-50 text-amber-800'}`}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span>
+          <strong>{qty(o.quartos)} quartos</strong> nas {o.noites.length} noites de{' '}
+          {dmy(o.noites[0])} a {dmy(o.noites[o.noites.length - 1])}, somados dos turnos.
+        </span>
+        {manuais && (
+          <button className="font-medium text-brand-700 hover:underline" onClick={onUsar}>
+            usar este valor
+          </button>
+        )}
+      </div>
+
+      {o.faltam.length > 0 && (
+        <div className="mt-1">
+          Faltam {o.faltam.length} {o.faltam.length === 1 ? 'dia' : 'dias'} sem turno preenchido
+          ({o.faltam.map(dmy).join(', ')}) — o total está por baixo do real.
+        </div>
+      )}
+      {o.suspeitos.map(s => (
+        <div key={s.dia} className="mt-1">
+          {dmy(s.dia)} tem {qty(s.quartos)} quartos no turno, o que parece gralha.
+          Convém corrigir antes de gravar.
+        </div>
+      ))}
+    </div>
+  )
+}
+
 /* -------------------------------------------------------------- nova fatura */
 
 function NovaFatura({
@@ -564,6 +622,26 @@ function NovaFatura({
   const [f, setF] = useState({
     numero: '', inicio: '', fim: '', quartos: 0, iva: 0,
   })
+  const [ocupacao, setOcupacao] = useState<Ocupacao | null>(null)
+  const [aBuscar, setABuscar] = useState(false)
+  // se escreveres o número à mão, a app deixa de o substituir
+  const [quartosManuais, setQuartosManuais] = useState(false)
+
+  /* Escolhidas as datas, os quartos vêm dos relatórios de turno. */
+  useEffect(() => {
+    if (!f.inicio || !f.fim || f.fim < f.inicio) { setOcupacao(null); return }
+    let vivo = true
+    setABuscar(true)
+    ocupacaoDoPeriodo(hotelId, f.inicio, f.fim)
+      .then(o => {
+        if (!vivo) return
+        setOcupacao(o)
+        if (!quartosManuais && o.quartos > 0) setF(x => ({ ...x, quartos: o.quartos }))
+      })
+      .catch(() => { if (vivo) setOcupacao(null) })
+      .finally(() => { if (vivo) setABuscar(false) })
+    return () => { vivo = false }
+  }, [f.inicio, f.fim, hotelId])
   const [ls, setLs] = useState<{ artigo: string; quantidade: number; valor: number }[]>(
     artigos.filter(a => a.conta_para_quarto)
       .map(a => ({ artigo: a.nome, quantidade: 0, valor: 0 })))
@@ -616,9 +694,18 @@ function NovaFatura({
         </div>
         <div>
           <label className="label">Quartos ocupados</label>
-          <NumInput value={f.quartos} onChange={n => setF({ ...f, quartos: n })} />
+          <NumInput
+            value={f.quartos}
+            onChange={n => { setQuartosManuais(true); setF({ ...f, quartos: n }) }}
+          />
         </div>
       </div>
+
+      <DosTurnos
+        o={ocupacao} aBuscar={aBuscar} manuais={quartosManuais}
+        onUsar={() => { setQuartosManuais(false)
+                        if (ocupacao) setF(x => ({ ...x, quartos: ocupacao.quartos })) }}
+      />
 
       <div className="mt-4 max-h-[45vh] overflow-y-auto rounded-lg border border-slate-200">
         <table className="w-full text-sm">

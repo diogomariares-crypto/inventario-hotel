@@ -25,6 +25,10 @@ import Rh from './pages/Rh'
 import RhCustos from './pages/RhCustos'
 import RhDefinicoes from './pages/RhDefinicoes'
 import Lavandaria from './pages/Lavandaria'
+import HkRegisto from './pages/HkRegisto'
+import HkMapa from './pages/HkMapa'
+import HkOutsourcing from './pages/HkOutsourcing'
+import HkDefinicoes from './pages/HkDefinicoes'
 import Dados from './pages/Dados'
 
 function SoAdmin({ children }: { children: React.ReactNode }) {
@@ -50,6 +54,16 @@ function SoRh({ children }: { children: React.ReactNode }) {
 function SoLav({ children }: { children: React.ReactNode }) {
   const { podeVerLavandaria } = useAuth()
   return podeVerLavandaria ? <>{children}</> : <Navigate to="/" replace />
+}
+
+function SoEscrita({ children }: { children: React.ReactNode }) {
+  const { allowedDepartments } = useAuth()
+  return allowedDepartments.length > 0 ? <>{children}</> : <Navigate to="/" replace />
+}
+
+function SoHk({ children }: { children: React.ReactNode }) {
+  const { podeVerHk } = useAuth()
+  return podeVerHk ? <>{children}</> : <Navigate to="/" replace />
 }
 
 function Interior() {
@@ -92,9 +106,13 @@ function Interior() {
         <Route path="/rh-custos" element={<SoRh><RhCustos /></SoRh>} />
         <Route path="/rh-definicoes" element={<SoAdmin><RhDefinicoes /></SoAdmin>} />
         <Route path="/lavandaria" element={<SoLav><Lavandaria /></SoLav>} />
+        <Route path="/hk" element={<SoHk><HkRegisto /></SoHk>} />
+        <Route path="/hk-mapa" element={<SoHk><HkMapa /></SoHk>} />
+        <Route path="/hk-outsourcing" element={<SoHk><HkOutsourcing /></SoHk>} />
+        <Route path="/hk-definicoes" element={<SoAdmin><HkDefinicoes /></SoAdmin>} />
         <Route path="/conta" element={<Conta />} />
         <Route path="/historico" element={<Historico />} />
-        <Route path="/itens" element={<SoAdmin><Itens /></SoAdmin>} />
+        <Route path="/itens" element={<SoEscrita><Itens /></SoEscrita>} />
         <Route path="/utilizadores" element={<SoAdmin><Utilizadores /></SoAdmin>} />
         <Route path="/dados" element={<SoAdmin><Dados /></SoAdmin>} />
         <Route path="/migrar-imagens" element={<SoAdmin><MigrarImagens /></SoAdmin>} />

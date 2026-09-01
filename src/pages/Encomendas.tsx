@@ -19,7 +19,7 @@ type PurchaseRow = Purchase & {
 
 export default function Encomendas() {
   const { hotelId } = useApp()
-  const { canWrite, email } = useAuth()
+  const { canWrite, email, isAdmin } = useAuth()
   const toast = useToast()
 
   const [dept, setDept] = useState<Department>('HSK')
@@ -180,7 +180,7 @@ export default function Encomendas() {
       {aba === 'pares' && (
         <QuadroPares
           stock={stock} itens={itens} consumo={consumo} fornecedores={fornecedores}
-          busca={busca} setBusca={setBusca} editavel={editavel}
+          busca={busca} setBusca={setBusca} editavel={editavel} isAdmin={isAdmin}
           onEncomendar={s2 => setNova({
             item: s2, qty: 0, valor: 0, data: todayISO(),
             fornecedor: itens.find(i => i.id === s2.item_id)?.supplier ?? '', nota: '',
@@ -190,7 +190,7 @@ export default function Encomendas() {
       )}
 
       {aba === 'fornecedores' && (
-        <QuadroFornecedores fornecedores={fornecedores} onMudou={carregar} />
+        <QuadroFornecedores fornecedores={fornecedores} isAdmin={isAdmin} onMudou={carregar} />
       )}
 
       {/* ------------------------------ Pendentes ------------------------------ */}
@@ -381,7 +381,8 @@ export default function Encomendas() {
  * essa lista é o mapa do que falta arrumar na contagem.
  */
 function QuadroPares({
-  stock, itens, consumo, fornecedores, busca, setBusca, editavel, onEncomendar, onAdoptado,
+  stock, itens, consumo, fornecedores, busca, setBusca, editavel, isAdmin,
+  onEncomendar, onAdoptado,
 }: {
   stock: StockRow[]
   itens: Item[]
@@ -390,6 +391,7 @@ function QuadroPares({
   busca: string
   setBusca: (v: string) => void
   editavel: boolean
+  isAdmin: boolean
   onEncomendar: (s: StockRow) => void
   onAdoptado: () => void
 }) {
@@ -443,6 +445,12 @@ function QuadroPares({
         histórico de contagem suficiente para o par ser calculado a partir do consumo real.
         Nos outros fica dito o que falta — quase sempre é contagem por preencher ou entradas
         por registar, não falta de tempo.
+        {!isAdmin && (
+          <span className="mt-1 block text-slate-500">
+            Adoptar um par calculado altera a ficha do artigo, por isso é coisa de
+            administrador. Podes ver os números e encomendar à vontade.
+          </span>
+        )}
       </div>
 
       <div className="card overflow-x-auto">
@@ -495,7 +503,7 @@ function QuadroPares({
                   )}
                 </td>
                 <td className="td whitespace-nowrap text-right">
-                  {a.par != null && editavel && a.par !== s.par_qty && (
+                  {a.par != null && isAdmin && a.par !== s.par_qty && (
                     <button
                       className="text-sm text-brand-600 hover:underline disabled:text-slate-300"
                       disabled={aGuardar === s.item_id}
@@ -532,9 +540,10 @@ function QuadroPares({
  * quanto tempo tem de aguentar.
  */
 function QuadroFornecedores({
-  fornecedores, onMudou,
+  fornecedores, isAdmin, onMudou,
 }: {
   fornecedores: Record<string, Fornecedor>
+  isAdmin: boolean
   onMudou: () => void
 }) {
   const toast = useToast()
@@ -557,6 +566,12 @@ function QuadroFornecedores({
         registadas que cheguem, o valor foi medido nelas; o resto está por confirmar.
         Se um fornecedor só entrega em certos dias, marca-os — a espera pela próxima
         entrega passa a contar para o par.
+        {!isAdmin && (
+          <strong className="mt-1 block text-slate-700">
+            Estes valores mexem nos pares de todos os artigos do fornecedor, por isso
+            só o administrador os altera.
+          </strong>
+        )}
       </p>
 
       <div className="mt-3 overflow-x-auto">
@@ -575,8 +590,12 @@ function QuadroFornecedores({
               <tr key={f.nome} className="border-t border-slate-100">
                 <td className="py-2 pr-3 font-medium text-slate-700">{f.nome}</td>
                 <td className="py-2 pr-3">
-                  <NumInput className="w-20 px-2 py-1 text-sm" value={f.prazo_dias}
-                            onChange={n => guardar(f.nome, { prazo_dias: n })} />
+                  {isAdmin ? (
+                    <NumInput className="w-20 px-2 py-1 text-sm" value={f.prazo_dias}
+                              onChange={n => guardar(f.nome, { prazo_dias: n })} />
+                  ) : (
+                    <span className="tabular-nums text-slate-700">{f.prazo_dias}</span>
+                  )}
                 </td>
                 <td className="py-2 pr-3">
                   <div className="flex flex-wrap gap-1">
@@ -586,9 +605,11 @@ function QuadroFornecedores({
                       return (
                         <button
                           key={d}
+                          disabled={!isAdmin}
                           title={on ? 'entrega neste dia' : 'não entrega neste dia'}
                           className={`rounded px-1.5 py-0.5 text-[11px] ${
-                            on ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'}`}
+                            on ? 'bg-brand-500 text-white' : 'bg-slate-100 text-slate-500'
+                          } ${isAdmin ? '' : 'cursor-default'}`}
                           onClick={() => guardar(f.nome, {
                             dias_entrega: on
                               ? f.dias_entrega.filter(x => x !== dia)

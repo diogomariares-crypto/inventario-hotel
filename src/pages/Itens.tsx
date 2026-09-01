@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../lib/appState'
+import { useAuth } from '../lib/auth'
 import { supabase } from '../lib/supabase'
 import type { Department, Item } from '../lib/types'
 import { DEPARTMENTS } from '../lib/types'
@@ -23,8 +24,14 @@ const vazio = (dept: Department, hotelId: string | null): Partial<Item> => ({
 
 export default function Itens() {
   const { hotelId } = useApp()
+  const { allowedDepartments } = useAuth()
   const toast = useToast()
-  const [dept, setDept] = useState<Department>('HSK')
+  // Só se mostram os departamentos em que a pessoa pode mesmo escrever — a
+  // base de dados recusaria os outros, e um separador que não funciona
+  // é pior do que separador nenhum.
+  const meus = allowedDepartments
+  const [dept, setDept] = useState<Department>(meus[0] ?? 'HSK')
+  useEffect(() => { if (meus.length && !meus.includes(dept)) setDept(meus[0]) }, [meus])
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')
@@ -84,7 +91,8 @@ export default function Itens() {
         <div>
           <label className="label">Departamento</label>
           <select className="input w-auto" value={dept} onChange={e => setDept(e.target.value as Department)}>
-            {DEPARTMENTS.map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
+            {DEPARTMENTS.filter(d => meus.includes(d.value))
+              .map(d => <option key={d.value} value={d.value}>{d.label}</option>)}
           </select>
         </div>
         <div className="min-w-[200px] flex-1">

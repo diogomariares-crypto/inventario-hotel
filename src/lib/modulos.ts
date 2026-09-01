@@ -21,6 +21,10 @@ export interface Pagina {
   soRh?: boolean
   /** Só visível a quem pode ver custos de lavandaria. */
   soLav?: boolean
+  /** Só visível a quem pode ver a produção do housekeeping. */
+  soHk?: boolean
+  /** Visível a quem escreve em pelo menos um departamento. */
+  soEscrita?: boolean
 }
 
 export interface Modulo {
@@ -33,6 +37,8 @@ export interface Modulo {
   soRh?: boolean
   /** Só visível a quem pode ver custos de lavandaria. */
   soLav?: boolean
+  /** Só visível a quem pode ver a produção do housekeeping. */
+  soHk?: boolean
   paginas: Pagina[]
 }
 
@@ -74,8 +80,20 @@ export const MODULOS: Modulo[] = [
       { to: '/contagem', label: 'Contagem' },
       { to: '/encomendas', label: 'Encomendas' },
       { to: '/historico', label: 'Histórico' },
-      { to: '/itens', label: 'Itens', soAdmin: true },
+      { to: '/itens', label: 'Itens', soEscrita: true },
       { to: '/dados', label: 'Importar/Exportar', soAdmin: true },
+    ],
+  },
+  {
+    id: 'housekeeping',
+    label: 'Housekeeping',
+    icone: '⌂',
+    soHk: true,
+    paginas: [
+      { to: '/hk', label: 'Registo do dia' },
+      { to: '/hk-mapa', label: 'Mapa do mês' },
+      { to: '/hk-outsourcing', label: 'Outsourcing' },
+      { to: '/hk-definicoes', label: 'Definições', soAdmin: true },
     ],
   },
   {

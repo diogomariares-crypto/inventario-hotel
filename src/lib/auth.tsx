@@ -21,6 +21,7 @@ interface AuthState {
   podeVerPa: boolean
   podeVerRh: boolean
   podeVerLavandaria: boolean
+  podeVerHk: boolean
   canWrite: (d: Department) => boolean
   allowedDepartments: Department[]
   signOut: () => Promise<void>
@@ -85,6 +86,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const podeVerRh = isAdmin || roles.includes('rh')
   // custos de rouparia: direcção, financeiro e quem trata dos quartos
   const podeVerLavandaria = podeVerPainel || roles.includes('hsk')
+  // produção e pessoal do housekeeping: a governanta lança, a direção lê
+  const podeVerHk = podeVerLavandaria
   const canWrite = (d: Department) =>
     isAdmin ||
     (d === 'FO' && roles.includes('fo')) ||
@@ -107,6 +110,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     podeVerPa,
     podeVerRh,
     podeVerLavandaria,
+    podeVerHk,
     canWrite,
     allowedDepartments,
     signOut: async () => { await supabase.auth.signOut() },

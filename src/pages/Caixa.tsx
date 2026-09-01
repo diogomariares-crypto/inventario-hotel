@@ -2,18 +2,42 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import * as XLSX from 'xlsx'
 import { useAuth } from '../lib/auth'
 import {
-  DENOMINACOES, apagar, apagarFicheiro, balanco, estaCerto, ehNota, fetchCaixas, fetchMes,
-  guardarFicheiro, guardarSaida, importarRecebido, juntarDeposito, juntarEnvelope,
-  juntarRecebidoManual, juntarSaida, lerColagem, lerRelatorioPms, linkDaFatura,
-  somaDenominacoes, TOLERANCIA,
-  type Balanco, type Caixa, type Deposito, type Envelope, type Recebido, type Saida,
+  DENOMINACOES, apagar, apagarFicheiro, balanco, contasDoEnvelope, estaCerto, ehNota,
+  fetchCaixas, fetchMes, guardarEnvelope, guardarFicheiro, guardarSaida, importarRecebido,
+  juntarDeposito, juntarEnvelope, juntarRecebidoManual, juntarSaida, lerColagem,
+  instante, lerRelatorioPms, linkDaFatura, recebidoDoTurno, somaDenominacoes, TOLERANCIA,
+  type Balanco, type Caixa, type Deposito, type Envelope, type LinhaDoMes,
+  type Recebido, type Saida,
 } from '../lib/caixa'
 import { dmy, lastDayOfMonth, money, todayISO } from '../lib/format'
 import { Loading, Modal, NumInput, Spinner, StatCard, useToast } from '../components/ui'
 
 type Dados = {
-  recebido: Recebido[]; saidas: Saida[]; envelopes: Envelope[]; depositos: Deposito[]
+  recebido: Recebido[]; saidas: Saida[]; envelopes: Envelope[]
+  depositos: Deposito[]; anterior: Envelope | null
 }
+
+/**
+ * As horas aqui são horas de relógio de parede, sem fuso — o que o Mews imprime
+ * e o que a equipa escreve. Por isso mexem-se como texto: pô-las num Date só
+ * serviria para as fazer andar uma hora quando muda a hora legal.
+ */
+
+/** "2026-09-01T23:00" — o formato que o input datetime-local fala. */
+const paraInput = (t: string) => t.slice(0, 16)
+
+const agora = () => {
+  const d = new Date()
+  const p = (n: number) => String(n).padStart(2, '0')
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}` +
+         `T${p(d.getHours())}:${p(d.getMinutes())}`
+}
+
+/** "01/09 23:00" */
+const quando = (t: string) => `${t.slice(8, 10)}/${t.slice(5, 7)} ${t.slice(11, 16)}`
+
+/** Só a hora: "23:00". */
+const horaDe = (t: string) => t.slice(11, 16)
 
 export default function CaixaPage() {
   const { email } = useAuth()
@@ -25,7 +49,7 @@ export default function CaixaPage() {
   const [d, setD] = useState<Dados | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
-  const [novoEnvelope, setNovoEnvelope] = useState(false)
+  const [aEditar, setAEditar] = useState<Envelope | null | 'novo'>(null)
   const [colar, setColar] = useState(false)
 
   useEffect(() => {
@@ -46,7 +70,8 @@ export default function CaixaPage() {
 
   const caixa = caixas.find(c => c.id === caixaId)
   const b: Balanco | null = useMemo(
-    () => (d ? balanco(d.recebido, d.saidas, d.envelopes, d.depositos) : null), [d])
+    () => (d ? balanco(d.recebido, d.saidas, d.envelopes, d.depositos, d.anterior) : null),
+    [d])
 
   if (erro) {
     return (
@@ -59,6 +84,9 @@ export default function CaixaPage() {
   if (loading || !d || !b || !caixa) return <Loading />
 
   const certo = estaCerto(b)
+  const ultimo = d.envelopes.length
+    ? [...d.envelopes].sort((a, x) => x.fim.localeCompare(a.fim))[0]
+    : d.anterior
 
   return (
     <div className="space-y-4">
@@ -77,9 +105,12 @@ export default function CaixaPage() {
         </div>
         <p className="flex-1 text-xs text-slate-500">
           {caixa.fonte === 'pms'
-            ? 'O recebido vem do relatório de pagamentos do Mews — arrasta-o para a caixa lá em baixo.'
+            ? 'O recebido vem do relatório de pagamentos do Mews — arrasta-o para a caixa lá em baixo. Cada turno vai lá buscar o que foi cobrado entre a hora a que começou e a hora a que fechou.'
             : 'Aqui o recebido escreve-se ao fecho do dia; não há relatório de onde o ir buscar.'}
         </p>
+        <button className="btn-primary shrink-0" onClick={() => setAEditar('novo')}>
+          + Fechar turno
+        </button>
       </div>
 
       {/* ---------------------------------------------------------- balanço */}
@@ -88,80 +119,76 @@ export default function CaixaPage() {
                   hint={`${d.recebido.length} ${d.recebido.length === 1 ? 'registo' : 'registos'}`} />
         <StatCard label="Pago em faturas" value={money(b.saidas)}
                   hint={`${b.faturas} ${b.faturas === 1 ? 'fatura' : 'faturas'}`} />
-        <StatCard label="Devia estar em caixa" value={money(b.esperado)}
-                  hint="recebido menos as faturas" />
         <StatCard label="Contado nos envelopes" value={money(b.contado)}
-                  hint={`${b.envelopes} ${b.envelopes === 1 ? 'envelope' : 'envelopes'}`} />
+                  hint={`${b.envelopes} ${b.envelopes === 1 ? 'turno fechado' : 'turnos fechados'}`} />
+        <StatCard label="Por depositar" value={money(b.emCofre)}
+                  hint={`${money(b.depositado)} já depositados`} />
         <div className={`card p-4 ${certo ? 'border-[#0ca30c]/40 bg-[#0ca30c]/5'
                                           : 'border-[#d03b3b]/40 bg-[#d03b3b]/5'}`}>
-          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">Diferença</div>
+          <div className="text-xs font-medium uppercase tracking-wide text-slate-500">
+            Diferença acumulada
+          </div>
           <div className={`mt-1 text-2xl font-semibold tabular-nums ${
             certo ? 'text-[#0a7d0a]' : 'text-[#b32d2d]'}`}>
             {b.diferenca > 0 ? '+' : ''}{money(b.diferenca)}
           </div>
           <div className="mt-0.5 text-xs text-slate-600">
-            {certo ? 'bate certo'
+            {certo ? 'os turnos fecham certos'
               : b.diferenca > 0 ? 'contámos a mais do que o esperado'
               : 'falta dinheiro ou faltam faturas por lançar'}
           </div>
         </div>
       </div>
 
-      {!certo && (
-        <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <strong>Faltam {money(Math.abs(b.diferenca))} para fechar.</strong>{' '}
-          Antes de procurar dinheiro perdido, vale a pena confirmar o costume: um envelope
-          ainda por abrir, uma fatura que veio no envelope e não foi lançada, ou troco que
-          ficou para o turno seguinte e vai aparecer no mês que vem.
+      <Avisos b={b} />
+
+      {/* ----------------------------------------------------------- turnos */}
+      <div className="card p-4">
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <h3 className="text-sm font-semibold text-slate-700">Turnos fechados</h3>
+          <span className="text-xs text-slate-400">
+            cada turno leva o dinheiro cobrado no Mews entre a hora de abertura e a de fecho
+          </span>
         </div>
-      )}
+
+        <div className="mt-3 overflow-x-auto">
+          <table className="w-full min-w-[720px] text-sm">
+            <thead>
+              <tr className="border-b border-slate-200 text-left text-[11px] uppercase tracking-wide text-slate-500">
+                <th className="th">Turno</th>
+                <th className="th">Quem fechou</th>
+                <th className="th text-right" title="deixado pelo turno anterior">Abertura</th>
+                <th className="th text-right">Recebido</th>
+                <th className="th text-right">Faturas</th>
+                <th className="th text-right" title="fica na caixa para o turno seguinte">Fica</th>
+                <th className="th text-right">Devia ter</th>
+                <th className="th text-right">Contado</th>
+                <th className="th text-right">Difer.</th>
+                <th className="th text-right" title="soma das diferenças até aqui">Acum.</th>
+                <th className="th"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {b.linhas.map(l => (
+                <LinhaTurno key={l.envelope.id} l={l}
+                            onAbrir={() => setAEditar(l.envelope)}
+                            onApagar={async () => {
+                              if (!confirm(`Apagar o turno de ${quando(l.envelope.inicio)}? As faturas que lá vinham ficam soltas, não se perdem.`)) return
+                              await apagar('cx_envelopes', l.envelope.id); carregar()
+                            }} />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {b.linhas.length === 0 && (
+          <p className="py-6 text-center text-sm text-slate-400">
+            Nenhum turno fechado neste mês.
+          </p>
+        )}
+      </div>
 
       <div className="grid gap-4 lg:grid-cols-2">
-        {/* ----------------------------------------------------- envelopes */}
-        <div className="card p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2">
-            <h3 className="text-sm font-semibold text-slate-700">Envelopes contados</h3>
-            <button className="btn-primary text-sm" onClick={() => setNovoEnvelope(true)}>
-              + Contar envelope
-            </button>
-          </div>
-
-          <div className="mt-3 space-y-1.5">
-            {d.envelopes.map(e => (
-              <div key={e.id} className="flex flex-wrap items-center gap-2 rounded-lg border border-slate-200 px-2.5 py-1.5">
-                <span className="w-20 shrink-0 text-sm tabular-nums text-slate-500">{dmy(e.dia)}</span>
-                <span className="min-w-[80px] flex-1 truncate text-sm text-slate-700">
-                  {e.responsavel || '—'}
-                  {e.nota && <span className="ml-1.5 text-[11px] text-slate-400">{e.nota}</span>}
-                </span>
-                {Object.keys(e.denominacoes).length > 0 && (
-                  <span className="chip bg-slate-100 text-slate-500" title="contado nota a nota">
-                    {Object.values(e.denominacoes).reduce((s, n) => s + (n || 0), 0)} peças
-                  </span>
-                )}
-                <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-800">
-                  {money(e.valor)}
-                </span>
-                <button className="shrink-0 rounded px-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
-                        onClick={async () => {
-                          if (!confirm(`Apagar o envelope de ${dmy(e.dia)}?`)) return
-                          await apagar('cx_envelopes', e.id); carregar()
-                        }}>✕</button>
-              </div>
-            ))}
-            {d.envelopes.length === 0 && (
-              <p className="py-3 text-sm text-slate-400">Nenhum envelope contado neste mês.</p>
-            )}
-          </div>
-
-          <Depositos
-            depositos={d.depositos} emCofre={b.emCofre}
-            onJuntar={async dep => { await juntarDeposito(caixaId, dep); carregar() }}
-            onApagar={async id => { await apagar('cx_depositos', id); carregar() }}
-          />
-        </div>
-
-        {/* -------------------------------------------------------- saídas */}
+        {/* -------------------------------------------------------- faturas */}
         <div className="card p-4">
           <div className="flex flex-wrap items-baseline justify-between gap-2">
             <h3 className="text-sm font-semibold text-slate-700">
@@ -172,13 +199,13 @@ export default function CaixaPage() {
             </button>
           </div>
           <p className="text-xs text-slate-400">
-            O que saiu do envelope. Podes anexar a fatura — fica guardada com o nome
-            «data – fornecedor – nº».
+            Lança-as aqui e depois diz, no fecho do turno, quais vinham dentro do envelope.
           </p>
 
           <div className="mt-3 max-h-[320px] space-y-1.5 overflow-y-auto">
             {d.saidas.map(s => (
               <LinhaSaida key={s.id} s={s} caixaId={caixaId}
+                          envelope={d.envelopes.find(e => e.id === s.envelope_id) ?? null}
                           onMudou={carregar}
                           onApagar={async () => {
                             if (!confirm(`Apagar a fatura de ${s.fornecedor ?? dmy(s.dia)}?`)) return
@@ -192,9 +219,18 @@ export default function CaixaPage() {
           </div>
 
           <NovaSaida onJuntar={async s => {
-            await juntarSaida(caixaId, { ...s, ficheiro: null }, email)
+            await juntarSaida(caixaId, { ...s, ficheiro: null, envelope_id: null }, email)
             carregar()
           }} />
+        </div>
+
+        {/* ------------------------------------------------------ depósitos */}
+        <div className="card p-4">
+          <Depositos
+            depositos={d.depositos} emCofre={b.emCofre}
+            onJuntar={async dep => { await juntarDeposito(caixaId, dep); carregar() }}
+            onApagar={async id => { await apagar('cx_depositos', id); carregar() }}
+          />
         </div>
       </div>
 
@@ -208,13 +244,19 @@ export default function CaixaPage() {
         onApagar={async id => { await apagar('cx_recebido', id); carregar() }}
       />
 
-      {novoEnvelope && (
+      {aEditar && (
         <ContarEnvelope
-          onFechar={() => setNovoEnvelope(false)}
-          onGravar={async e => {
-            await juntarEnvelope(caixaId, e, email)
-            setNovoEnvelope(false); carregar(); toast('Envelope registado')
-          }}
+          caixaId={caixaId}
+          existente={aEditar === 'novo' ? null : aEditar}
+          recebido={d.recebido}
+          saidas={d.saidas}
+          /* o turno novo começa onde o anterior acabou: sem buracos nem sobreposições */
+          inicioSugerido={aEditar === 'novo' ? (ultimo ? paraInput(ultimo.fim) : `${mes}-01T00:00`) : null}
+          abertura={aEditar === 'novo'
+            ? (ultimo?.transporte ?? 0)
+            : aberturaDe(b, aEditar.id, d.anterior)}
+          onFechar={() => setAEditar(null)}
+          onGravado={() => { setAEditar(null); carregar() }}
         />
       )}
 
@@ -222,7 +264,8 @@ export default function CaixaPage() {
         <ColarFaturas
           onFechar={() => setColar(false)}
           onGravar={async linhas => {
-            for (const l of linhas) await juntarSaida(caixaId, { ...l, ficheiro: null }, email)
+            for (const l of linhas)
+              await juntarSaida(caixaId, { ...l, ficheiro: null, envelope_id: null }, email)
             setColar(false); carregar(); toast(`${linhas.length} faturas lançadas`)
           }}
         />
@@ -231,13 +274,104 @@ export default function CaixaPage() {
   )
 }
 
+/** O que o turno anterior a este deixou na caixa. */
+function aberturaDe(b: Balanco, id: string, anterior: Envelope | null) {
+  const i = b.linhas.findIndex(l => l.envelope.id === id)
+  if (i < 0) return 0
+  return i === 0 ? (anterior?.transporte ?? 0) : b.linhas[i - 1].envelope.transporte
+}
+
+/* ------------------------------------------------------------------ avisos */
+
+function Avisos({ b }: { b: Balanco }) {
+  const avisos: string[] = []
+  if (b.faturasSoltas.length) {
+    const t = b.faturasSoltas.reduce((s, x) => s + x.valor, 0)
+    avisos.push(`${b.faturasSoltas.length} ${b.faturasSoltas.length === 1
+      ? 'fatura não está atribuída a nenhum turno' : 'faturas não estão atribuídas a nenhum turno'}` +
+      ` (${money(t)}). Enquanto assim for, não são descontadas a nenhum envelope.`)
+  }
+  if (b.foraDeTurno.length) {
+    const t = b.foraDeTurno.reduce((s, x) => s + x.valor, 0)
+    avisos.push(`${money(t)} cobrados em ${b.foraDeTurno.length} pagamentos que não caem dentro` +
+      ` de nenhum turno fechado — falta fechar esse turno, ou as horas não cobrem tudo.`)
+  }
+  for (const [a, c] of b.sobrepostos)
+    avisos.push(`Os turnos de ${quando(a.inicio)} e ${quando(c.inicio)} sobrepõem-se:` +
+      ` o dinheiro cobrado nesse intervalo está a ser contado nos dois.`)
+
+  if (!avisos.length) return null
+  return (
+    <div className="rounded-lg bg-amber-50 px-4 py-3 text-sm text-amber-800">
+      <ul className="space-y-1">
+        {avisos.map((a, i) => <li key={i}>• {a}</li>)}
+      </ul>
+    </div>
+  )
+}
+
+/* ------------------------------------------------------------------ turnos */
+
+function LinhaTurno({
+  l, onAbrir, onApagar,
+}: {
+  l: LinhaDoMes
+  onAbrir: () => void
+  onApagar: () => void
+}) {
+  const c = l.contas
+  const zero = (n: number) => (n ? money(n) : <span className="text-slate-300">—</span>)
+  return (
+    <tr className="border-b border-slate-100 hover:bg-slate-50/60">
+      <td className="td whitespace-nowrap">
+        <button className="text-left font-medium text-slate-700 hover:text-brand-700 hover:underline"
+                onClick={onAbrir}>
+          {quando(l.envelope.inicio)} → {quando(l.envelope.fim)}
+        </button>
+        {l.envelope.nota && (
+          <div className="text-[11px] text-slate-400">{l.envelope.nota}</div>
+        )}
+      </td>
+      <td className="td text-slate-600">{l.envelope.responsavel || '—'}</td>
+      <td className="td text-right tabular-nums text-slate-500">{zero(c.abertura)}</td>
+      <td className="td text-right tabular-nums text-slate-700">
+        {money(c.recebido)}
+        <span className="ml-1 text-[11px] text-slate-400">{c.nPagamentos}</span>
+      </td>
+      <td className="td text-right tabular-nums text-slate-500">
+        {c.faturas ? `−${money(c.faturas)}` : <span className="text-slate-300">—</span>}
+        {c.nFaturas > 0 && <span className="ml-1 text-[11px] text-slate-400">{c.nFaturas}</span>}
+      </td>
+      <td className="td text-right tabular-nums text-slate-500">
+        {c.transporte ? `−${money(c.transporte)}` : <span className="text-slate-300">—</span>}
+      </td>
+      <td className="td text-right font-medium tabular-nums text-slate-700">{money(c.esperado)}</td>
+      <td className="td text-right font-semibold tabular-nums text-slate-900">{money(c.contado)}</td>
+      <td className={`td text-right font-semibold tabular-nums ${
+        c.certo ? 'text-slate-300' : c.diferenca > 0 ? 'text-[#0a7d0a]' : 'text-[#b32d2d]'}`}>
+        {c.certo ? '—' : `${c.diferenca > 0 ? '+' : ''}${money(c.diferenca)}`}
+      </td>
+      <td className={`td text-right tabular-nums ${
+        Math.abs(l.acumulado) <= TOLERANCIA ? 'text-slate-300' : 'text-slate-600'}`}>
+        {Math.abs(l.acumulado) <= TOLERANCIA ? '—'
+          : `${l.acumulado > 0 ? '+' : ''}${money(l.acumulado)}`}
+      </td>
+      <td className="td text-right">
+        <button className="rounded px-1.5 text-slate-400 hover:bg-red-50 hover:text-red-600"
+                onClick={onApagar}>✕</button>
+      </td>
+    </tr>
+  )
+}
+
 /* ------------------------------------------------------------------ saídas */
 
 function LinhaSaida({
-  s, caixaId, onMudou, onApagar,
+  s, caixaId, envelope, onMudou, onApagar,
 }: {
   s: Saida
   caixaId: string
+  envelope: Envelope | null
   onMudou: () => void
   onApagar: () => void
 }) {
@@ -264,6 +398,10 @@ function LinhaSaida({
           {[s.descricao, s.documento].filter(Boolean).join(' · ') || 'sem descrição'}
         </div>
       </div>
+      <span className={`chip shrink-0 ${envelope ? 'bg-slate-100 text-slate-600'
+                                                 : 'bg-amber-100 text-amber-800'}`}>
+        {envelope ? quando(envelope.fim) : 'sem turno'}
+      </span>
       <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-800">
         {money(s.valor)}
       </span>
@@ -296,7 +434,7 @@ function LinhaSaida({
 function NovaSaida({
   onJuntar,
 }: {
-  onJuntar: (s: Omit<Saida, 'id' | 'ficheiro'>) => Promise<void>
+  onJuntar: (s: Omit<Saida, 'id' | 'ficheiro' | 'envelope_id'>) => Promise<void>
 }) {
   const [s, setS] = useState({
     dia: todayISO(), fornecedor: '', descricao: '', documento: '', valor: 0,
@@ -352,7 +490,7 @@ function ColarFaturas({
   onFechar, onGravar,
 }: {
   onFechar: () => void
-  onGravar: (l: Omit<Saida, 'id' | 'ficheiro'>[]) => Promise<void>
+  onGravar: (l: Omit<Saida, 'id' | 'ficheiro' | 'envelope_id'>[]) => Promise<void>
 }) {
   const [texto, setTexto] = useState('')
   const linhas = useMemo(() => lerColagem(texto), [texto])
@@ -408,29 +546,87 @@ function ColarFaturas({
   )
 }
 
-/* --------------------------------------------------------------- envelopes */
+/* ------------------------------------------------------------- fecho do turno */
 
 function ContarEnvelope({
-  onFechar, onGravar,
+  caixaId, existente, recebido, saidas, inicioSugerido, abertura, onFechar, onGravado,
 }: {
+  caixaId: string
+  existente: Envelope | null
+  recebido: Recebido[]
+  saidas: Saida[]
+  inicioSugerido: string | null
+  abertura: number
   onFechar: () => void
-  onGravar: (e: Omit<Envelope, 'id'>) => Promise<void>
+  onGravado: () => void
 }) {
-  const [dia, setDia] = useState(todayISO())
-  const [responsavel, setResponsavel] = useState('')
-  const [nota, setNota] = useState('')
-  const [qtd, setQtd] = useState<Record<string, number>>({})
+  const { email } = useAuth()
+  const toast = useToast()
+
+  const [inicio, setInicio] = useState(
+    existente ? paraInput(existente.inicio) : (inicioSugerido ?? agora()))
+  const [fim, setFim] = useState(existente ? paraInput(existente.fim) : agora())
+  const [responsavel, setResponsavel] = useState(existente?.responsavel ?? '')
+  const [nota, setNota] = useState(existente?.nota ?? '')
+  const [transporte, setTransporte] = useState(existente?.transporte ?? 0)
+  const [qtd, setQtd] = useState<Record<string, number>>(existente?.denominacoes ?? {})
+  const [escolhidas, setEscolhidas] = useState<string[]>(
+    saidas.filter(s => existente && s.envelope_id === existente.id).map(s => s.id))
   const [aGravar, setAGravar] = useState(false)
 
-  const total = somaDenominacoes(qtd)
+  const valido = instante(fim) > instante(inicio)
+
+  // o que o Mews registou dentro deste intervalo — muda enquanto se mexe nas horas
+  const doTurno = useMemo(
+    () => (valido ? recebidoDoTurno(recebido, inicio, fim) : []),
+    [recebido, inicio, fim, valido])
+
+  // faturas à escolha: as que ainda estão soltas, mais as que já são deste envelope
+  const candidatas = useMemo(
+    () => saidas.filter(s => !s.envelope_id || (existente && s.envelope_id === existente.id)),
+    [saidas, existente])
+
+  const faturas = candidatas.filter(s => escolhidas.includes(s.id))
+  const contado = somaDenominacoes(qtd)
   const pecas = Object.values(qtd).reduce((s, n) => s + (n || 0), 0)
 
+  const c = contasDoEnvelope(
+    { inicio, fim, valor: contado, transporte }, abertura, doTurno, faturas)
+
+  const gravar = async () => {
+    setAGravar(true)
+    try {
+      const env = {
+        dia: fim.slice(0, 10),
+        inicio, fim,
+        responsavel: responsavel.trim() || null,
+        valor: contado,
+        denominacoes: Object.fromEntries(Object.entries(qtd).filter(([, n]) => n > 0)),
+        transporte,
+        nota: nota.trim() || null,
+      }
+      if (existente) await guardarEnvelope(existente.id, caixaId, env, escolhidas, email)
+      else await juntarEnvelope(caixaId, env, escolhidas, email)
+      toast(existente ? 'Turno actualizado' : 'Turno fechado')
+      onGravado()
+    } catch (e) {
+      toast((e as Error).message, 'erro'); setAGravar(false)
+    }
+  }
+
   return (
-    <Modal open onClose={onFechar} title="Contar envelope" wide>
-      <div className="grid gap-3 sm:grid-cols-3">
+    <Modal open onClose={onFechar} title={existente ? 'Turno' : 'Fechar turno'} wide>
+      {/* ------------------------------------------------- o intervalo */}
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div>
-          <label className="label">Dia do fecho</label>
-          <input type="date" className="input" value={dia} onChange={e => setDia(e.target.value)} />
+          <label className="label">O turno começou</label>
+          <input type="datetime-local" className="input" value={inicio}
+                 onChange={e => setInicio(e.target.value)} />
+        </div>
+        <div>
+          <label className="label">e fechou</label>
+          <input type="datetime-local" className="input" value={fim}
+                 onChange={e => setFim(e.target.value)} />
         </div>
         <div>
           <label className="label">Quem fechou</label>
@@ -440,10 +636,101 @@ function ContarEnvelope({
         <div>
           <label className="label">Nota</label>
           <input className="input" value={nota} onChange={e => setNota(e.target.value)}
-                 placeholder="ex.: sem trocos, ficou para o turno seguinte" />
+                 placeholder="ex.: sem trocos de 5" />
         </div>
       </div>
 
+      {!valido && (
+        <p className="mt-2 rounded bg-red-50 px-3 py-2 text-sm text-red-700">
+          O fecho tem de vir depois da abertura.
+        </p>
+      )}
+
+      {/* ------------------------------------------------- o que devia ter */}
+      <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4">
+        <div className="grid gap-2 sm:grid-cols-2">
+          <dl className="space-y-1 text-sm">
+            <Conta rotulo="Ficou do turno anterior" valor={c.abertura} apagado={!c.abertura} />
+            <Conta rotulo={`Recebido no turno · ${c.nPagamentos} pagamentos`} valor={c.recebido} />
+            <Conta rotulo={`Faturas neste envelope · ${c.nFaturas}`} valor={-c.faturas}
+                   apagado={!c.faturas} />
+            <Conta rotulo="Fica na caixa para o turno seguinte" valor={-c.transporte}
+                   apagado={!c.transporte} />
+          </dl>
+          <div className="flex flex-col justify-center rounded-lg bg-white px-4 py-3">
+            <div className="text-xs uppercase tracking-wide text-slate-500">
+              Devia estar no envelope
+            </div>
+            <div className="text-3xl font-semibold tabular-nums text-slate-900">
+              {money(c.esperado)}
+            </div>
+            {contado > 0 && (
+              <div className={`mt-1 text-sm font-medium tabular-nums ${
+                c.certo ? 'text-[#0a7d0a]' : 'text-[#b32d2d]'}`}>
+                contado {money(contado)}
+                {c.certo ? ' · bate certo'
+                  : ` · ${c.diferenca > 0 ? 'sobram' : 'faltam'} ${money(Math.abs(c.diferenca))}`}
+              </div>
+            )}
+          </div>
+        </div>
+
+        <div className="mt-3 border-t border-slate-200 pt-3">
+          <label className="label">Troco que fica na caixa para o turno seguinte</label>
+          <div className="flex flex-wrap items-center gap-2">
+            <NumInput className="h-9 w-28 text-sm" value={transporte} onChange={setTransporte} />
+            <p className="min-w-[220px] flex-1 text-xs text-slate-500">
+              Só se não houver trocos para pôr o valor certo no envelope. Fica a abrir o
+              turno seguinte, por isso este envelope continua a fechar exacto.
+            </p>
+          </div>
+          {c.esperado < 0 && (
+            <p className="mt-2 rounded bg-amber-50 px-3 py-2 text-xs text-amber-800">
+              Assim o envelope teria de levar {money(c.esperado)} — a caixa não chega para
+              deixar tanto troco. Confirma as horas do turno, as faturas, ou este valor.
+            </p>
+          )}
+        </div>
+      </div>
+
+      {/* ------------------------------------------------------- as faturas */}
+      <div className="mt-4">
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+          Que faturas vinham neste envelope?
+        </h4>
+        {candidatas.length === 0 ? (
+          <p className="mt-1.5 text-sm text-slate-400">
+            Não há faturas por atribuir. Lança-as na página e voltam a aparecer aqui.
+          </p>
+        ) : (
+          <div className="mt-1.5 max-h-[160px] space-y-1 overflow-y-auto rounded-lg border border-slate-200 p-1.5">
+            {candidatas.map(s => {
+              const sel = escolhidas.includes(s.id)
+              // as do intervalo aparecem em destaque; as outras ficam mais apagadas
+              const perto = s.dia >= inicio.slice(0, 10) && s.dia <= fim.slice(0, 10)
+              return (
+                <label key={s.id}
+                       className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1 text-sm ${
+                         sel ? 'bg-brand-50' : 'hover:bg-slate-50'}`}>
+                  <input type="checkbox" checked={sel}
+                         onChange={e => setEscolhidas(x =>
+                           e.target.checked ? [...x, s.id] : x.filter(i => i !== s.id))} />
+                  <span className={`w-16 shrink-0 tabular-nums ${
+                    perto ? 'text-slate-500' : 'text-slate-300'}`}>{dmy(s.dia)}</span>
+                  <span className={`min-w-0 flex-1 truncate ${
+                    perto ? 'text-slate-700' : 'text-slate-400'}`}>
+                    {s.fornecedor || '—'}
+                    <span className="ml-1.5 text-[11px] text-slate-400">{s.documento}</span>
+                  </span>
+                  <span className="shrink-0 tabular-nums text-slate-700">{money(s.valor)}</span>
+                </label>
+              )
+            })}
+          </div>
+        )}
+      </div>
+
+      {/* ------------------------------------------------------- a contagem */}
       <div className="mt-4 grid gap-4 sm:grid-cols-2">
         {[DENOMINACOES.filter(ehNota), DENOMINACOES.filter(v => !ehNota(v))].map((grupo, g) => (
           <div key={g}>
@@ -476,27 +763,32 @@ function ContarEnvelope({
 
       <div className="mt-4 flex flex-wrap items-center gap-3 border-t border-slate-200 pt-3">
         <div>
-          <div className="text-xs uppercase tracking-wide text-slate-500">Total do envelope</div>
-          <div className="text-2xl font-semibold tabular-nums text-brand-700">{money(total)}</div>
+          <div className="text-xs uppercase tracking-wide text-slate-500">Contado no envelope</div>
+          <div className="text-2xl font-semibold tabular-nums text-brand-700">{money(contado)}</div>
           <div className="text-xs text-slate-400">{pecas} notas e moedas</div>
         </div>
         <button
           className="btn-primary ml-auto"
-          disabled={total <= 0 || aGravar}
-          onClick={async () => {
-            setAGravar(true)
-            await onGravar({
-              dia, responsavel: responsavel.trim() || null, valor: total,
-              denominacoes: Object.fromEntries(
-                Object.entries(qtd).filter(([, n]) => n > 0)),
-              nota: nota.trim() || null,
-            })
-          }}
-        >{aGravar ? 'A gravar…' : 'Gravar envelope'}</button>
+          disabled={!valido || contado <= 0 || aGravar}
+          onClick={gravar}
+        >{aGravar ? 'A gravar…' : existente ? 'Gravar alterações' : 'Fechar turno'}</button>
       </div>
     </Modal>
   )
 }
+
+function Conta({ rotulo, valor, apagado }: { rotulo: string; valor: number; apagado?: boolean }) {
+  return (
+    <div className={`flex items-baseline justify-between gap-2 ${apagado ? 'text-slate-400' : ''}`}>
+      <dt className="min-w-0 truncate">{rotulo}</dt>
+      <dd className="shrink-0 tabular-nums">
+        {valor < 0 ? `−${money(-valor)}` : money(valor)}
+      </dd>
+    </div>
+  )
+}
+
+/* --------------------------------------------------------------- depósitos */
 
 function Depositos({
   depositos, emCofre, onJuntar, onApagar,
@@ -511,15 +803,15 @@ function Depositos({
   const [ref, setRef] = useState('')
 
   return (
-    <div className="mt-4 border-t border-slate-100 pt-3">
+    <div>
       <div className="flex items-baseline justify-between gap-2">
-        <h4 className="text-xs font-semibold uppercase tracking-wide text-slate-500">Depósitos</h4>
+        <h3 className="text-sm font-semibold text-slate-700">Depósitos</h3>
         <span className="text-xs tabular-nums text-slate-500">
           por depositar: <strong className="text-slate-700">{money(emCofre)}</strong>
         </span>
       </div>
 
-      <div className="mt-2 space-y-1">
+      <div className="mt-3 space-y-1">
         {depositos.map(d => (
           <div key={d.id} className="flex items-center gap-2 text-sm">
             <span className="w-20 shrink-0 tabular-nums text-slate-500">{dmy(d.dia)}</span>
@@ -529,9 +821,12 @@ function Depositos({
                     onClick={() => onApagar(d.id)}>✕</button>
           </div>
         ))}
+        {depositos.length === 0 && (
+          <p className="py-3 text-sm text-slate-400">Nenhum depósito neste mês.</p>
+        )}
       </div>
 
-      <div className="mt-2 flex flex-wrap items-end gap-2">
+      <div className="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
         <input type="date" className="input h-9 w-auto text-sm" value={dia}
                onChange={e => setDia(e.target.value)} />
         <NumInput className="h-9 w-24 text-sm" value={valor} onChange={setValor} />
@@ -689,7 +984,7 @@ function Recebimentos({
               {recebido.map(r => (
                 <tr key={r.id} className="border-t border-slate-100">
                   <td className="td whitespace-nowrap tabular-nums text-slate-500">
-                    {dmy(r.dia)}{r.momento && ` ${r.momento.slice(11, 16)}`}
+                    {dmy(r.dia)}{r.momento && ` ${horaDe(r.momento)}`}
                   </td>
                   <td className="td">{r.cliente || '—'}</td>
                   <td className="td text-slate-500">{r.criador || '—'}</td>

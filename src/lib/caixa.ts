@@ -1,12 +1,20 @@
 /**
  * Contagem de dinheiro.
  *
- * A pergunta é sempre a mesma: o dinheiro que temos em mãos corresponde ao que
- * recebemos, menos as faturas que foram pagas com ele? Três colunas e uma
- * diferença:
+ * A unidade é o turno, não o dia: um envelope é o que uma equipa fechou entre a
+ * hora a que abriu a caixa e a hora a que a fechou. Dado esse intervalo, o
+ * relatório do Mews diz sozinho quanto dinheiro lá devia estar:
  *
- *   recebido − saídas = o que devia estar no envelope
- *   contado + depositado = o que está
+ *     o que o turno anterior deixou na caixa
+ *   + o cobrado em dinheiro entre o início e o fim do turno
+ *   − as faturas que vieram dentro deste envelope
+ *   − o troco que fica na caixa para o turno seguinte
+ *   ─────────────────────────────────────────────────
+ *   = o que devia estar no envelope,  que se compara com o contado nota a nota
+ *
+ * Um turno pode fechar torto de propósito — não havia trocos — e nesse caso o
+ * que ficou na caixa abre o turno seguinte e a conta continua a fechar. Por
+ * isso o número que importa no fim do mês é a diferença acumulada.
  *
  * Substitui a Contagem de Dinheiro, as Saídas de Caixa, o CAJA OPORTO e o
  * CAJAS VALENTINAS, que hoje são quatro ficheiros a dizer partes da mesma coisa.
@@ -43,14 +51,23 @@ export interface Saida {
   documento: string | null
   valor: number
   ficheiro: string | null
+  /** Em que envelope veio esta fatura. Nula enquanto ninguém o disser. */
+  envelope_id: string | null
 }
 
 export interface Envelope {
   id: string
+  /** Dia do fecho — o dia do fim do turno. Serve para arrumar por mês. */
   dia: string
+  /** Princípio do turno, com hora. */
+  inicio: string
+  /** Fim do turno, com hora. */
+  fim: string
   responsavel: string | null
   valor: number
   denominacoes: Record<string, number>
+  /** Troco que não coube no envelope e ficou na caixa para o turno seguinte. */
+  transporte: number
   nota: string | null
 }
 
@@ -79,44 +96,157 @@ export function somaDenominacoes(d: Record<string, number>): number {
 
 /* ------------------------------------------------------------------ balanço */
 
-export interface Balanco {
-  recebido: number
-  saidas: number
-  /** Recebido menos as faturas pagas por caixa: o que devia vir no envelope. */
-  esperado: number
-  contado: number
-  depositado: number
-  /** Contado menos esperado. Positivo sobra, negativo falta. */
-  diferenca: number
-  /** O que ainda está no cofre por depositar. */
-  emCofre: number
-  envelopes: number
-  faturas: number
-}
-
-export function balanco(
-  recebido: Recebido[], saidas: Saida[], envelopes: Envelope[], depositos: Deposito[],
-): Balanco {
-  const soma = <T,>(xs: T[], f: (x: T) => number) =>
-    Math.round(xs.reduce((s, x) => s + f(x), 0) * 100) / 100
-  const r = soma(recebido, x => x.valor)
-  const s = soma(saidas, x => x.valor)
-  const c = soma(envelopes, x => x.valor)
-  const d = soma(depositos, x => x.valor)
-  const esperado = Math.round((r - s) * 100) / 100
-  return {
-    recebido: r, saidas: s, esperado, contado: c, depositado: d,
-    diferenca: Math.round((c - esperado) * 100) / 100,
-    emCofre: Math.round((c - d) * 100) / 100,
-    envelopes: envelopes.length, faturas: saidas.length,
-  }
-}
-
 /**
  * Uma diferença de cêntimos é troco; uma de dezenas é um envelope por abrir ou
  * uma fatura por lançar. O limiar evita alarme onde não há problema.
  */
 export const TOLERANCIA = 1
+const cents = (n: number) => Math.round(n * 100) / 100
+const somar = <T,>(xs: T[], f: (x: T) => number) => cents(xs.reduce((s, x) => s + f(x), 0))
+
+/**
+ * As horas da caixa são horas de relógio de parede — o Mews imprime «11:11» e o
+ * turno fecha «às 15:00». Não há fuso nenhum nisto, por isso nunca passam por
+ * um Date: comparam-se como texto, que em ISO já dá a ordem cronológica certa.
+ * Só é preciso pôr todas do mesmo tamanho, porque o input do turno vem sem
+ * segundos (2026-09-01T23:00) e o Mews vem com eles.
+ */
+export const instante = (t: string) => `${t.slice(0, 19)}:00:00`.slice(0, 19)
+
+/** Um pagamento pertence ao turno [início, fim[ — o fim é já do turno seguinte. */
+export const dentroDoTurno = (momento: string | null, inicio: string, fim: string) =>
+  momento != null &&
+  instante(momento) >= instante(inicio) && instante(momento) < instante(fim)
+
+export function recebidoDoTurno(recebido: Recebido[], inicio: string, fim: string) {
+  return recebido.filter(r => dentroDoTurno(r.momento, inicio, fim))
+}
+
+/* ---------------------------------------------------------------- o envelope */
+
+/**
+ * As contas de um envelope. É a pergunta do fecho de turno, por ordem:
+ *
+ *   o que estava na caixa quando o turno começou   (deixado pelo turno anterior)
+ * + o que o Mews registou em dinheiro neste turno
+ * − as faturas que vieram dentro deste envelope
+ * − o troco que fica na caixa para o turno seguinte
+ * ────────────────────────────────────────────────
+ * = o que devia estar no envelope
+ */
+export interface ContasDoEnvelope {
+  abertura: number
+  recebido: number
+  faturas: number
+  transporte: number
+  esperado: number
+  contado: number
+  /** Contado menos esperado. Positivo sobra, negativo falta. */
+  diferenca: number
+  certo: boolean
+  nPagamentos: number
+  nFaturas: number
+}
+
+export function contasDoEnvelope(
+  env: Pick<Envelope, 'inicio' | 'fim' | 'valor' | 'transporte'>,
+  abertura: number,
+  recebido: Recebido[],
+  faturas: Saida[],
+): ContasDoEnvelope {
+  const doTurno = recebidoDoTurno(recebido, env.inicio, env.fim)
+  const r = somar(doTurno, x => x.valor)
+  const f = somar(faturas, x => x.valor)
+  const esperado = cents(abertura + r - f - env.transporte)
+  const diferenca = cents(env.valor - esperado)
+  return {
+    abertura: cents(abertura), recebido: r, faturas: f, transporte: env.transporte,
+    esperado, contado: env.valor, diferenca,
+    certo: Math.abs(diferenca) <= TOLERANCIA,
+    nPagamentos: doTurno.length, nFaturas: faturas.length,
+  }
+}
+
+/* ------------------------------------------------------------------- o mês */
+
+export interface LinhaDoMes {
+  envelope: Envelope
+  contas: ContasDoEnvelope
+  faturas: Saida[]
+  /** Soma das diferenças até este turno, inclusive. É esta que tem de fechar. */
+  acumulado: number
+}
+
+export interface Balanco {
+  linhas: LinhaDoMes[]
+  recebido: number
+  saidas: number
+  contado: number
+  depositado: number
+  /** Soma das diferenças de todos os turnos do mês. */
+  diferenca: number
+  /** O que ainda está no cofre por depositar. */
+  emCofre: number
+  envelopes: number
+  faturas: number
+  /** Faturas que ainda não foram atribuídas a nenhum envelope. */
+  faturasSoltas: Saida[]
+  /** Pagamentos que não caem dentro de nenhum turno fechado. */
+  foraDeTurno: Recebido[]
+  /** Turnos que se sobrepõem — o mesmo dinheiro contado duas vezes. */
+  sobrepostos: [Envelope, Envelope][]
+}
+
+export function balanco(
+  recebido: Recebido[], saidas: Saida[], envelopes: Envelope[], depositos: Deposito[],
+  /** Último envelope antes deste mês: o que deixou na caixa é a abertura do primeiro. */
+  anterior?: Envelope | null,
+): Balanco {
+  const ordenados = [...envelopes]
+    .sort((a, b) => instante(a.inicio).localeCompare(instante(b.inicio)))
+  const porEnvelope = new Map<string, Saida[]>()
+  for (const s of saidas) {
+    if (!s.envelope_id) continue
+    const l = porEnvelope.get(s.envelope_id) ?? []
+    l.push(s); porEnvelope.set(s.envelope_id, l)
+  }
+
+  const linhas: LinhaDoMes[] = []
+  let abertura = anterior?.transporte ?? 0
+  let acumulado = 0
+  for (const env of ordenados) {
+    const faturas = porEnvelope.get(env.id) ?? []
+    const contas = contasDoEnvelope(env, abertura, recebido, faturas)
+    acumulado = cents(acumulado + contas.diferenca)
+    linhas.push({ envelope: env, contas, faturas, acumulado })
+    abertura = env.transporte
+  }
+
+  const cobertos = new Set<string>()
+  for (const env of ordenados)
+    for (const r of recebidoDoTurno(recebido, env.inicio, env.fim)) cobertos.add(r.id)
+
+  const sobrepostos: [Envelope, Envelope][] = []
+  for (let i = 1; i < ordenados.length; i++)
+    if (instante(ordenados[i].inicio) < instante(ordenados[i - 1].fim))
+      sobrepostos.push([ordenados[i - 1], ordenados[i]])
+
+  return {
+    linhas,
+    recebido: somar(recebido, x => x.valor),
+    saidas: somar(saidas, x => x.valor),
+    contado: somar(envelopes, x => x.valor),
+    depositado: somar(depositos, x => x.valor),
+    diferenca: acumulado,
+    emCofre: cents(somar(envelopes, x => x.valor) - somar(depositos, x => x.valor)),
+    envelopes: envelopes.length,
+    faturas: saidas.length,
+    faturasSoltas: saidas.filter(s => !s.envelope_id),
+    foraDeTurno: recebido.filter(r => !cobertos.has(r.id)),
+    sobrepostos,
+  }
+}
+
 export const estaCerto = (b: Balanco) => Math.abs(b.diferenca) <= TOLERANCIA
 
 /* --------------------------------------------------- relatório de pagamentos */
@@ -210,25 +340,39 @@ export async function fetchCaixas(): Promise<Caixa[]> {
   return (data ?? []) as Caixa[]
 }
 
+/** Um dia para cada lado, para os turnos que atravessam a meia-noite do mês. */
+const desviar = (dia: string, dias: number) => {
+  const d = new Date(`${dia}T12:00:00`)
+  d.setDate(d.getDate() + dias)
+  return d.toISOString().slice(0, 10)
+}
+
 export async function fetchMes(caixaId: string, de: string, ate: string) {
-  const [r, s, e, d] = await Promise.all([
+  const [r, s, e, d, ant] = await Promise.all([
+    // o turno da noite de 31 vai buscar pagamentos do dia 1 seguinte, e vice-versa
     supabase.from('cx_recebido').select('*').eq('caixa_id', caixaId)
-      .gte('dia', de).lte('dia', ate).order('dia'),
+      .gte('dia', desviar(de, -1)).lte('dia', desviar(ate, 1)).order('momento'),
     supabase.from('cx_saidas').select('*').eq('caixa_id', caixaId)
       .gte('dia', de).lte('dia', ate).order('dia'),
     supabase.from('cx_envelopes').select('*').eq('caixa_id', caixaId)
-      .gte('dia', de).lte('dia', ate).order('dia'),
+      .gte('dia', de).lte('dia', ate).order('inicio'),
     supabase.from('cx_depositos').select('*').eq('caixa_id', caixaId)
       .gte('dia', de).lte('dia', ate).order('dia'),
+    // o último turno antes do mês: o que deixou na caixa abre o primeiro turno
+    supabase.from('cx_envelopes').select('*').eq('caixa_id', caixaId)
+      .lt('dia', de).order('inicio', { ascending: false }).limit(1).maybeSingle(),
   ])
   for (const x of [r, s, e, d]) if (x.error) throw x.error
+  const env = (x: Record<string, unknown>) => ({
+    ...x, valor: num(x.valor), transporte: num(x.transporte),
+    denominacoes: x.denominacoes ?? {},
+  }) as Envelope
   return {
     recebido: (r.data ?? []).map(x => ({ ...x, valor: num(x.valor) })) as Recebido[],
     saidas: (s.data ?? []).map(x => ({ ...x, valor: num(x.valor) })) as Saida[],
-    envelopes: (e.data ?? []).map(x => ({
-      ...x, valor: num(x.valor), denominacoes: x.denominacoes ?? {},
-    })) as Envelope[],
+    envelopes: (e.data ?? []).map(env),
     depositos: (d.data ?? []).map(x => ({ ...x, valor: num(x.valor) })) as Deposito[],
+    anterior: ant.data ? env(ant.data) : null,
   }
 }
 
@@ -252,6 +396,9 @@ export async function juntarRecebidoManual(
 ) {
   const { error } = await supabase.from('cx_recebido').insert({
     caixa_id: caixaId, dia, valor, origem: 'manual', cliente: nota,
+    // sem hora a que se agarrar, fica ao meio-dia: cai dentro de qualquer
+    // turno que cubra este dia
+    momento: `${dia}T12:00:00`,
     chave: `manual|${dia}|${valor.toFixed(2)}|${Date.now()}`,
   })
   if (error) throw error
@@ -269,12 +416,42 @@ export async function guardarSaida(id: string, patch: Partial<Saida>) {
   if (error) throw error
 }
 
+/**
+ * Grava o envelope e prende-lhe as faturas que vieram lá dentro. As que
+ * deixarem de estar seleccionadas voltam a ficar soltas — a fatura não se perde,
+ * só deixa de pertencer a este turno.
+ */
 export async function juntarEnvelope(
-  caixaId: string, e: Omit<Envelope, 'id'>, por: string | null,
+  caixaId: string, e: Omit<Envelope, 'id'>, faturas: string[], por: string | null,
+) {
+  const { data, error } = await supabase.from('cx_envelopes')
+    .insert({ ...e, caixa_id: caixaId, atualizado_por: por }).select('id').single()
+  if (error) throw error
+  await atribuirFaturas(data.id as string, faturas, caixaId)
+  return data.id as string
+}
+
+export async function guardarEnvelope(
+  id: string, caixaId: string, e: Omit<Envelope, 'id'>, faturas: string[], por: string | null,
 ) {
   const { error } = await supabase.from('cx_envelopes')
-    .insert({ ...e, caixa_id: caixaId, atualizado_por: por })
+    .update({ ...e, atualizado_por: por }).eq('id', id)
   if (error) throw error
+  await atribuirFaturas(id, faturas, caixaId)
+}
+
+async function atribuirFaturas(envelopeId: string, faturas: string[], caixaId: string) {
+  // soltar as que já lá não pertencem
+  const soltar = supabase.from('cx_saidas').update({ envelope_id: null })
+    .eq('envelope_id', envelopeId)
+  const { error: e1 } = faturas.length
+    ? await soltar.not('id', 'in', `(${faturas.join(',')})`)
+    : await soltar
+  if (e1) throw e1
+  if (!faturas.length) return
+  const { error: e2 } = await supabase.from('cx_saidas')
+    .update({ envelope_id: envelopeId }).eq('caixa_id', caixaId).in('id', faturas)
+  if (e2) throw e2
 }
 
 export async function juntarDeposito(caixaId: string, d: Omit<Deposito, 'id'>) {
@@ -331,7 +508,7 @@ export async function apagarFicheiro(caminho: string) {
  * nome em vez da posição. É o que permite colar as Saídas de Caixa tal como
  * estão no Excel, onde a ordem é outra (Data · Descrição · Nº · Fornecedor).
  */
-export function lerColagem(texto: string): Omit<Saida, 'id' | 'ficheiro'>[] {
+export function lerColagem(texto: string): Omit<Saida, 'id' | 'ficheiro' | 'envelope_id'>[] {
   const linhas = texto.split(/\r?\n/).filter(l => l.trim())
   if (!linhas.length) return []
 
@@ -339,7 +516,7 @@ export function lerColagem(texto: string): Omit<Saida, 'id' | 'ficheiro'>[] {
   const mapa = cabecalho(parte(linhas[0]))
   const corpo = mapa ? linhas.slice(1) : linhas
 
-  const fora: Omit<Saida, 'id' | 'ficheiro'>[] = []
+  const fora: Omit<Saida, 'id' | 'ficheiro' | 'envelope_id'>[] = []
   for (const linha of corpo) {
     const c = parte(linha)
     if (c.length < 3) continue

@@ -439,3 +439,24 @@ alter table public.purchases replica identity full;
 do $$ begin
   alter publication supabase_realtime add table public.purchases;
 exception when duplicate_object then null; end $$;
+
+-- =====================================================================
+-- Periodicidade por item + períodos encadeados
+-- =====================================================================
+-- Cada item tem a sua periodicidade: no mesmo departamento pode haver itens
+-- contados todas as semanas e outros só uma vez por mês.
+alter table public.items
+  add column if not exists count_frequency period_kind not null default 'semanal';
+update public.items set count_frequency = 'mensal'  where department = 'FB';
+update public.items set count_frequency = 'semanal' where department in ('FO','HSK');
+
+-- Um departamento passa a poder ter períodos semanais e mensais em paralelo.
+alter table public.periods drop constraint if exists periods_hotel_id_department_start_date_key;
+create unique index if not exists periods_hotel_dept_kind_start_uniq
+  on public.periods (hotel_id, department, kind, start_date);
+
+-- end_date é sempre a data em que a contagem foi feita;
+-- start_date é o dia seguinte à contagem anterior do mesmo tipo.
+alter table public.periods drop constraint if exists periods_datas_validas;
+alter table public.periods add constraint periods_datas_validas
+  check (end_date >= start_date);

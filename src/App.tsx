@@ -29,6 +29,7 @@ import HkRegisto from './pages/HkRegisto'
 import HkMapa from './pages/HkMapa'
 import HkOutsourcing from './pages/HkOutsourcing'
 import HkDefinicoes from './pages/HkDefinicoes'
+import Caixa from './pages/Caixa'
 import Dados from './pages/Dados'
 
 function SoAdmin({ children }: { children: React.ReactNode }) {
@@ -54,6 +55,11 @@ function SoRh({ children }: { children: React.ReactNode }) {
 function SoLav({ children }: { children: React.ReactNode }) {
   const { podeVerLavandaria } = useAuth()
   return podeVerLavandaria ? <>{children}</> : <Navigate to="/" replace />
+}
+
+function SoCaixa({ children }: { children: React.ReactNode }) {
+  const { podeVerCaixa } = useAuth()
+  return podeVerCaixa ? <>{children}</> : <Navigate to="/" replace />
 }
 
 function SoEscrita({ children }: { children: React.ReactNode }) {
@@ -110,6 +116,7 @@ function Interior() {
         <Route path="/hk-mapa" element={<SoHk><HkMapa /></SoHk>} />
         <Route path="/hk-outsourcing" element={<SoHk><HkOutsourcing /></SoHk>} />
         <Route path="/hk-definicoes" element={<SoAdmin><HkDefinicoes /></SoAdmin>} />
+        <Route path="/caixa" element={<SoCaixa><Caixa /></SoCaixa>} />
         <Route path="/conta" element={<Conta />} />
         <Route path="/historico" element={<Historico />} />
         <Route path="/itens" element={<SoEscrita><Itens /></SoEscrita>} />

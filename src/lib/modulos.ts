@@ -23,6 +23,8 @@ export interface Pagina {
   soLav?: boolean
   /** Só visível a quem pode ver a produção do housekeeping. */
   soHk?: boolean
+  /** Só visível a quem trata do dinheiro das caixas. */
+  soCaixa?: boolean
   /** Visível a quem escreve em pelo menos um departamento. */
   soEscrita?: boolean
 }
@@ -39,6 +41,8 @@ export interface Modulo {
   soLav?: boolean
   /** Só visível a quem pode ver a produção do housekeeping. */
   soHk?: boolean
+  /** Só visível a quem trata do dinheiro das caixas. */
+  soCaixa?: boolean
   paginas: Pagina[]
 }
 
@@ -103,6 +107,15 @@ export const MODULOS: Modulo[] = [
     soLav: true,
     paginas: [
       { to: '/lavandaria', label: 'Custos' },
+    ],
+  },
+  {
+    id: 'caixa',
+    label: 'Caixa',
+    icone: '◫',
+    soCaixa: true,
+    paginas: [
+      { to: '/caixa', label: 'Contagem' },
     ],
   },
   {

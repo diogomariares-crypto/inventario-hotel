@@ -19,6 +19,8 @@ import {
 } from '../lib/housekeeping'
 import { diaSemanaCurto, dmy, lastDayOfMonth, money, qty, todayISO } from '../lib/format'
 import { Loading, NumInput, Spinner, StatCard, useToast } from '../components/ui'
+import BulkEdit, { Caixa, type CampoBulk } from '../components/BulkEdit'
+import { useSeleccao } from '../lib/seleccao'
 import { ehMes, mesCorrente, useLembrado } from '../lib/lembrar'
 
 interface Linha {
@@ -191,6 +193,45 @@ export default function HkMes() {
     return t
   }, [contas])
 
+  const dias = useMemo(() => linhas.map(l => l.dia), [linhas])
+  const sel = useSeleccao(dias)
+
+  /** Os dias que já aconteceram, têm movimento e ainda não têm pessoal escrito. */
+  const escolherPorPreencher = () => {
+    const alvo = linhas.filter(l =>
+      l.dia <= todayISO() && !l.existe && l.staff === 0 && (l.quartos > 0 || l.saidas > 0))
+    sel.nenhum()
+    for (const l of alvo) sel.alternar(l.dia)
+  }
+
+  const camposBulk: CampoBulk[] = [
+    { chave: 'staff', rotulo: 'Turnos de pessoal', tipo: 'numero',
+      patch: v => ({ staff: Math.max(0, Number(v)) }) },
+    { chave: 'limpezasMin', rotulo: 'Limpezas gerais (min)', tipo: 'numero',
+      nota: 'Os dias que tenham várias limpezas discriminadas ficam como estão — '
+          + 'um número só não as pode substituir.',
+      patch: v => ({ limpezasMin: Math.max(0, Number(v)) }) },
+    { chave: 'quartos', rotulo: 'Quartos ocupados', tipo: 'numero',
+      nota: 'Isto costuma vir do relatório de turno; só se mexe para corrigir.',
+      patch: v => ({ quartos: Math.max(0, Number(v)) }) },
+    { chave: 'saidas', rotulo: 'Saídas', tipo: 'numero',
+      nota: 'Isto costuma vir do relatório de turno; só se mexe para corrigir.',
+      patch: v => ({ saidas: Math.max(0, Number(v)) }) },
+  ]
+
+  /** Escreve o campo nas linhas escolhidas. Fica por gravar, como tudo o resto. */
+  const aplicarBulk = (patch: Record<string, unknown>, campo: CampoBulk) => {
+    const escolhidos = new Set(sel.escolhidos())
+    const intocaveis = (l: Linha) => campo.chave === 'limpezasMin' && l.limpezas.length > 1
+    const alvo = new Set(
+      linhas.filter(l => escolhidos.has(l.dia) && !intocaveis(l)).map(l => l.dia))
+    const saltados = escolhidos.size - alvo.size
+    setLinhas(ls => ls.map(l => (alvo.has(l.dia) ? { ...l, ...patch } as Linha : l)))
+    toast(saltados
+      ? `Aplicado a ${alvo.size} dias · ${saltados} com limpezas discriminadas ficaram como estavam`
+      : `Aplicado a ${alvo.size} ${alvo.size === 1 ? 'dia' : 'dias'}`)
+  }
+
   if (erro) {
     return (
       <div className="card p-6 text-sm">
@@ -213,10 +254,12 @@ export default function HkMes() {
                    onChange={e => setMes(e.target.value)} />
           </div>
           {podeEscrever && (
-            <PreencherVazios
-              onAplicar={n => setLinhas(ls => ls.map(l =>
-                (!l.existe && l.staff === 0 && l.dia <= hoje ? { ...l, staff: n } : l)))}
-            />
+            <div className="mb-1 flex flex-wrap gap-1.5 sm:border-l sm:border-slate-200 sm:pl-6">
+              <button className="btn-ghost" onClick={() => sel.todos()}>Escolher o mês</button>
+              <button className="btn-ghost" onClick={escolherPorPreencher}>
+                Escolher os que faltam
+              </button>
+            </div>
           )}
           {!podeEscrever && (
             <span className="chip mb-2 bg-amber-100 text-amber-800">só consulta</span>
@@ -225,7 +268,8 @@ export default function HkMes() {
         <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
           Os quartos e as saídas vêm do relatório de turno — só se escrevem para corrigir.
           Toca no dia para abrir a nota, as limpezas e o outsourcing.
-          {podeEscrever && ' O preenchimento em bloco só mexe nos dias já passados que ainda estão em branco.'}
+          {podeEscrever && ' Para mexer em vários dias de uma vez, escolhe-os na primeira coluna'
+            + ' — o shift-clique apanha o intervalo todo.'}
         </p>
       </div>
 
@@ -247,17 +291,26 @@ export default function HkMes() {
       </div>
 
       <div className="card overflow-x-auto">
-        <table className="w-full min-w-[820px] table-fixed border-collapse text-sm">
+        <table className="w-full min-w-[880px] table-fixed border-collapse text-sm">
           <colgroup>
-            <col className="w-[13%]" />
+            <col className="w-[4%]" /><col className="w-[15%]" />
             <col className="w-[9%]" /><col className="w-[9%]" />
-            <col className="w-[11%]" /><col className="w-[11%]" />
-            <col className="w-[10%]" />
-            <col className="w-[9%]" /><col className="w-[9%]" />
-            <col className="w-[10%]" /><col className="w-[9%]" />
+            <col className="w-[10%]" /><col className="w-[10%]" />
+            <col className="w-[9%]" />
+            <col className="w-[8%]" /><col className="w-[8%]" />
+            <col className="w-[10%]" /><col className="w-[8%]" />
           </colgroup>
           <thead>
             <tr className="border-b border-slate-200">
+              <th className="th">
+                {podeEscrever && (
+                  <Caixa
+                    ligada={sel.n > 0 && sel.n === linhas.length}
+                    titulo={sel.n ? 'desescolher tudo' : 'escolher o mês inteiro'}
+                    onAlternar={() => (sel.n ? sel.nenhum() : sel.todos())}
+                  />
+                )}
+              </th>
               <th className="th">Dia</th>
               <th className="th !text-right">Quartos</th>
               <th className="th !text-right">Saídas</th>
@@ -279,7 +332,14 @@ export default function HkMes() {
               return [
                 <tr key={l.dia}
                     className={`border-b border-slate-100 ${
-                      mudou(l) ? 'bg-brand-50/70' : fds ? 'bg-slate-50/70' : ''}`}>
+                      sel.tem(l.dia) ? 'bg-brand-50'
+                        : mudou(l) ? 'bg-brand-50/70' : fds ? 'bg-slate-50/70' : ''}`}>
+                  <td className="td">
+                    {podeEscrever && (
+                      <Caixa ligada={sel.tem(l.dia)}
+                             onAlternar={com => sel.alternar(l.dia, com)} />
+                    )}
+                  </td>
                   <td className="td whitespace-nowrap">
                     <span className={`tabular-nums ${l.dia === hoje
                       ? 'font-semibold text-brand-700' : 'text-slate-700'}`}>
@@ -343,7 +403,7 @@ export default function HkMes() {
 
                 detalhe && (
                   <tr key={`${l.dia}-d`} className="border-b border-slate-200 bg-slate-50/80">
-                    <td className="px-3 py-3" colSpan={10}>
+                    <td className="px-3 py-3" colSpan={11}>
                       <Detalhe
                         l={l} param={param} podeEscrever={podeEscrever} ocupado={aGravar}
                         onNota={t => mudar(l.dia, { nota: t })}
@@ -371,25 +431,31 @@ export default function HkMes() {
         para o dia seguinte. Os dias já gravados mantêm os rácios com que nasceram.
       </p>
 
-      {podeEscrever && alterados.length > 0 && (
-        <div className="sticky bottom-16 z-20 md:bottom-4">
-          <div className="card flex flex-wrap items-center gap-3 border-brand-200 p-3 shadow-lg">
-            <span className="text-sm text-slate-700">
-              <strong>{alterados.length}</strong>{' '}
-              {alterados.length === 1 ? 'dia alterado' : 'dias alterados'}
-              <span className="ml-1.5 text-slate-400">
-                {alterados.map(l => l.dia.slice(8)).join(', ')}
+      {podeEscrever && (sel.n > 0 || alterados.length > 0) && (
+        <div className="sticky bottom-16 z-20 space-y-2 md:bottom-4">
+          {sel.n > 0 && (
+            <BulkEdit n={sel.n} campos={camposBulk} aGravar={aGravar}
+                      onAplicar={aplicarBulk} onLimpar={sel.nenhum} />
+          )}
+          {alterados.length > 0 && (
+            <div className="card flex flex-wrap items-center gap-3 border-brand-200 p-3 shadow-lg">
+              <span className="text-sm text-slate-700">
+                <strong>{alterados.length}</strong>{' '}
+                {alterados.length === 1 ? 'dia alterado' : 'dias alterados'}
+                <span className="ml-1.5 text-slate-400">
+                  {alterados.map(l => l.dia.slice(8)).join(', ')}
+                </span>
               </span>
-            </span>
-            <button className="btn-ghost ml-auto" disabled={aGravar}
-                    onClick={() => setLinhas(Object.values(original).map(l => ({ ...l })))}>
-              Descartar
-            </button>
-            <button className="btn-primary" disabled={aGravar} onClick={gravar}>
-              {aGravar ? <span className="flex items-center gap-1.5"><Spinner /> a gravar…</span>
-                       : 'Gravar'}
-            </button>
-          </div>
+              <button className="btn-ghost ml-auto" disabled={aGravar}
+                      onClick={() => setLinhas(Object.values(original).map(l => ({ ...l })))}>
+                Descartar
+              </button>
+              <button className="btn-primary" disabled={aGravar} onClick={gravar}>
+                {aGravar ? <span className="flex items-center gap-1.5"><Spinner /> a gravar…</span>
+                         : 'Gravar'}
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>
@@ -620,31 +686,6 @@ function NovoTurno({
                 await onJuntar({ ...t, nome: t.nome.trim() })
                 setT({ ...t, nome: '' })
               }}>Juntar</button>
-    </div>
-  )
-}
-
-/**
- * Põe o mesmo número de turnos em todos os dias ainda em branco, para depois
- * só se corrigirem as excepções. Escreve-se na grelha, não na base de dados:
- * fica a marcar como alterado e ainda se pode descartar.
- */
-function PreencherVazios({ onAplicar }: { onAplicar: (n: number) => void }) {
-  const [n, setN] = useState(0)
-  return (
-    // o traço separa isto do mês, para não se ler tudo como uma frase só
-    <div className="sm:border-l sm:border-slate-200 sm:pl-6">
-      <label className="label">Preencher os dias vazios</label>
-      <div className="flex items-center gap-2">
-        <span className="text-sm text-slate-500">com</span>
-        <NumInput className="h-9 w-16 text-sm" value={n} onChange={setN} />
-        <span className="text-sm text-slate-500">
-          {n === 1 ? 'turno' : 'turnos'}
-        </span>
-        <button className="btn-ghost shrink-0" disabled={n <= 0} onClick={() => onAplicar(n)}>
-          Aplicar
-        </button>
-      </div>
     </div>
   )
 }

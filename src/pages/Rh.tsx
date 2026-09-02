@@ -4,12 +4,14 @@ import { useAuth } from '../lib/auth'
 import {
   ESTADOS, TIPOS_CONTRATO, alimentacaoDe, apagarEmpregado, criarEmpregado, custo,
   fetchDepartamentos, fetchEmpregados, fetchEmpresas, fetchParametros,
-  guardarEmpregado, hotelCurto, jaSaiu, pct, porId, somar, vaiSair,
+  guardarEmpregado, guardarEmpregados, hotelCurto, jaSaiu, pct, porId, somar, vaiSair,
   type Departamento, type Empregado, type Empresa, type Empresas, type Estado,
   type Parametros,
 } from '../lib/hr'
 import { money, dmy } from '../lib/format'
 import { Loading, Modal, NumInput, Spinner, StatCard, TextoAuto, useToast } from '../components/ui'
+import BulkEdit, { Caixa, type CampoBulk } from '../components/BulkEdit'
+import { useSeleccao } from '../lib/seleccao'
 
 const CORES_ESTADO: Record<Estado, string> = {
   activo: 'bg-slate-100 text-slate-600',
@@ -95,6 +97,65 @@ export default function Rh() {
     () => (param ? somar(filtradas.filter(p => !jaSaiu(p)), param, porEmpresa) : null),
     [filtradas, param, porEmpresa])
 
+  const ids = useMemo(() => filtradas.map(p => p.id), [filtradas])
+  const sel = useSeleccao(ids)
+  const [aAplicar, setAAplicar] = useState(false)
+
+  // Só os campos que fazem sentido dar a várias pessoas ao mesmo tempo. O nome
+  // e o número não vêm aqui de propósito: são de cada um.
+  const camposBulk: CampoBulk[] = [
+    { chave: 'departamento_id', rotulo: 'Departamento', tipo: 'escolha',
+      opcoes: deps.map(d => ({ v: d.id, rot: d.nome })),
+      patch: v => ({ departamento_id: v || null }) },
+    { chave: 'hotel_id', rotulo: 'Hotel', tipo: 'escolha',
+      opcoes: hotels.map(h => ({ v: h.id, rot: h.name })),
+      patch: v => ({ hotel_id: v || null }) },
+    { chave: 'empresa_id', rotulo: 'Empresa', tipo: 'escolha',
+      opcoes: empresas.map(e => ({ v: e.id, rot: e.nome })),
+      nota: 'A empresa manda no subsídio de alimentação de quem não tiver valor próprio.',
+      patch: v => ({ empresa_id: v }) },
+    { chave: 'estado', rotulo: 'Estado', tipo: 'escolha',
+      opcoes: ESTADOS.map(e => ({ v: e.v, rot: e.rot })),
+      patch: v => ({ estado: v as Estado }) },
+    { chave: 'funcao', rotulo: 'Função', tipo: 'texto',
+      patch: v => ({ funcao: v.trim() || null }) },
+    { chave: 'tipo_contrato', rotulo: 'Tipo de contrato', tipo: 'texto',
+      patch: v => ({ tipo_contrato: v.trim() || null }) },
+    { chave: 'data_saida', rotulo: 'Data de saída', tipo: 'data',
+      nota: 'Deixa o estado como está — marca-se «saiu» à parte, se for o caso.',
+      patch: v => ({ data_saida: v || null }) },
+    { chave: 'vencimento_base', rotulo: 'Vencimento base', tipo: 'numero',
+      patch: v => ({ vencimento_base: Number(v) }) },
+    { chave: 'sub_alim_dia', rotulo: 'Subsídio de alimentação / dia', tipo: 'numero',
+      nota: 'Zero volta a pôr a pessoa a seguir o valor da empresa.',
+      patch: v => ({ sub_alim_dia: Number(v) > 0 ? Number(v) : null }) },
+    { chave: 'abono_falhas', rotulo: 'Abono para falhas', tipo: 'numero',
+      patch: v => ({ abono_falhas: Number(v) }) },
+    { chave: 'sub_linguas', rotulo: 'Subsídio de línguas', tipo: 'numero',
+      patch: v => ({ sub_linguas: Number(v) }) },
+    { chave: 'isencao_horario', rotulo: 'Isenção de horário', tipo: 'numero',
+      patch: v => ({ isencao_horario: Number(v) }) },
+    { chave: 'meses_ferias', rotulo: 'Meses de férias', tipo: 'numero',
+      patch: v => ({ meses_ferias: Number(v) }) },
+    { chave: 'meses_natal', rotulo: 'Meses de Natal', tipo: 'numero',
+      patch: v => ({ meses_natal: Number(v) }) },
+  ]
+
+  /** Escreve o campo em toda a gente escolhida, numa gravação só. */
+  const aplicarBulk = async (patch: Record<string, unknown>) => {
+    const alvo = sel.escolhidos()
+    if (!alvo.length) return
+    setAAplicar(true)
+    try {
+      await guardarEmpregados(alvo, patch as Partial<Empregado>, email)
+      const dentro = new Set(alvo)
+      setPessoas(ps => ps.map(p => (dentro.has(p.id) ? { ...p, ...patch } as Empregado : p)))
+      toast(`${alvo.length} ${alvo.length === 1 ? 'pessoa alterada' : 'pessoas alteradas'}`)
+    } catch (e) {
+      toast((e as Error).message, 'erro')
+    } finally { setAAplicar(false) }
+  }
+
   const porPreencher = pessoas.filter(p => !jaSaiu(p) && p.vencimento_base <= 0).length
   const aSair = pessoas.filter(p => vaiSair(p)).length
   const emBaixa = pessoas.filter(p => p.estado === 'baixa').length
@@ -165,16 +226,24 @@ export default function Rh() {
       <div className="card">
         <table className="w-full table-fixed text-sm">
           <colgroup>
-            <col style={{ width: '22%' }} />
-            <col style={{ width: '22%' }} />
-            <col style={{ width: '15%' }} />
-            <col style={{ width: '13%' }} />
+            <col style={{ width: '4%' }} />
+            <col style={{ width: '20%' }} />
+            <col style={{ width: '20%' }} />
+            <col style={{ width: '14%' }} />
+            <col style={{ width: '12%' }} />
             <col style={{ width: '11%' }} />
-            <col style={{ width: '8%' }} />
             <col style={{ width: '9%' }} />
+            <col style={{ width: '10%' }} />
           </colgroup>
           <thead>
             <tr className="border-b border-slate-200 text-left text-xs uppercase tracking-wide text-slate-500">
+              <th className="th">
+                <Caixa
+                  ligada={sel.n > 0 && sel.n === filtradas.length}
+                  titulo={sel.n ? 'desescolher tudo' : 'escolher todos os que estão à vista'}
+                  onAlternar={() => (sel.n ? sel.nenhum() : sel.todos())}
+                />
+              </th>
               <th className="th">Nome</th>
               <th className="th">Função</th>
               <th className="th">Departamento</th>
@@ -189,7 +258,12 @@ export default function Rh() {
               const c = custo(p, param, porEmpresa)
               const saiu = jaSaiu(p)
               return (
-                <tr key={p.id} className={`border-b border-slate-100 ${saiu ? 'opacity-50' : ''}`}>
+                <tr key={p.id} className={`border-b border-slate-100 ${
+                  saiu ? 'opacity-50' : ''} ${sel.tem(p.id) ? 'bg-brand-50' : ''}`}>
+                  <td className="td align-top pt-3">
+                    <Caixa ligada={sel.tem(p.id)}
+                           onAlternar={com => sel.alternar(p.id, com)} />
+                  </td>
                   <td className="td align-top">
                     <button className="text-left font-medium text-slate-800 hover:text-brand-700"
                             onClick={() => setFicha(p.id)}>
@@ -258,6 +332,13 @@ export default function Rh() {
           <div className="p-8 text-center text-sm text-slate-500">Ninguém com estes filtros.</div>
         )}
       </div>
+
+      {sel.n > 0 && (
+        <div className="sticky bottom-16 z-20 md:bottom-4">
+          <BulkEdit n={sel.n} campos={camposBulk} aGravar={aAplicar}
+                    onAplicar={aplicarBulk} onLimpar={sel.nenhum} />
+        </div>
+      )}
 
       {ficha && (
         <Ficha

@@ -281,6 +281,20 @@ export async function guardarEmpregado(id: string, patch: Partial<Empregado>, po
   if (error) throw error
 }
 
+/**
+ * O mesmo campo em várias pessoas de uma vez — mudar meia dúzia de gente de
+ * departamento, ou marcar toda uma equipa como saída. Vai numa escrita só.
+ */
+export async function guardarEmpregados(
+  ids: string[], patch: Partial<Empregado>, por: string | null,
+) {
+  if (!ids.length) return
+  const { error } = await supabase.from('hr_empregados')
+    .update({ ...patch, atualizado_por: por, atualizado_em: new Date().toISOString() })
+    .in('id', ids)
+  if (error) throw error
+}
+
 export async function criarEmpregado(e: Partial<Empregado> & { nome: string; empresa_id: string }) {
   const { data, error } = await supabase.from('hr_empregados').insert(e).select('*').single()
   if (error) throw error

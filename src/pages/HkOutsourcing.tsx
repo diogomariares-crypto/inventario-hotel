@@ -77,20 +77,22 @@ export default function HkOutsourcing() {
 
   return (
     <div className="space-y-4">
-      <div className="card flex flex-wrap items-end gap-3 p-4">
-        <div>
-          <label className="label">{ano ? 'Ano' : 'Mês'}</label>
-          <input type="month" className="input w-auto" value={mes}
-                 onChange={e => setMes(e.target.value)} />
+      <div className="card p-4">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div>
+            <label className="label">{ano ? 'Ano' : 'Mês'}</label>
+            <input type="month" className="input w-auto" value={mes}
+                   onChange={e => setMes(e.target.value)} />
+          </div>
+          <label className="mb-2 flex items-center gap-1.5 text-sm text-slate-600">
+            <input type="checkbox" checked={ano} onChange={e => setAno(e.target.checked)} />
+            o ano inteiro
+          </label>
         </div>
-        <label className="flex items-center gap-1.5 pb-2 text-sm text-slate-600">
-          <input type="checkbox" checked={ano} onChange={e => setAno(e.target.checked)} />
-          o ano inteiro
-        </label>
-        <p className="flex-1 text-xs text-slate-500">
+        <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
           A {money(param.preco_hora_outsourcing)}/hora, ×{param.multiplicador_feriado} em
           feriados, com IVA a {(param.taxa_iva * 100).toLocaleString('pt-PT')}%.
-          Lança-se aqui em baixo, ou dentro do dia no separador Mês.
+          Os turnos lançam-se aqui em baixo, ou dentro do dia no separador Mês.
         </p>
       </div>
 

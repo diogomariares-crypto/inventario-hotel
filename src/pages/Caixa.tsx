@@ -96,26 +96,30 @@ export default function CaixaPage() {
   return (
     <div className="space-y-4">
       {/* --------------------------------------------------------- cabeçalho */}
-      <div className="card flex flex-wrap items-end gap-3 p-4">
-        <div>
-          <label className="label">Caixa</label>
-          <select className="input w-auto" value={caixaId} onChange={e => setCaixaId(e.target.value)}>
-            {caixas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
-          </select>
+      <div className="card p-4">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div>
+            <label className="label">Caixa</label>
+            <select className="input w-auto" value={caixaId}
+                    onChange={e => setCaixaId(e.target.value)}>
+              {caixas.map(c => <option key={c.id} value={c.id}>{c.nome}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="label">Mês</label>
+            <input type="month" className="input w-auto" value={mes}
+                   onChange={e => setMes(e.target.value)} />
+          </div>
+          <button className="btn-primary mb-0.5 ml-auto shrink-0"
+                  onClick={() => setAEditar('novo')}>
+            + Fechar turno
+          </button>
         </div>
-        <div>
-          <label className="label">Mês</label>
-          <input type="month" className="input w-auto" value={mes}
-                 onChange={e => setMes(e.target.value)} />
-        </div>
-        <p className="flex-1 text-xs text-slate-500">
+        <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
           {caixa.fonte === 'pms'
             ? 'O recebido vem do relatório de pagamentos do Mews — arrasta-o para a caixa lá em baixo. Cada turno vai lá buscar o que foi cobrado entre a hora a que começou e a hora a que fechou.'
             : 'Aqui o recebido escreve-se ao fecho do dia; não há relatório de onde o ir buscar.'}
         </p>
-        <button className="btn-primary shrink-0" onClick={() => setAEditar('novo')}>
-          + Fechar turno
-        </button>
       </div>
 
       {/* ---------------------------------------------------------- balanço */}

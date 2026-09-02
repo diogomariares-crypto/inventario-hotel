@@ -205,23 +205,28 @@ export default function HkMes() {
 
   return (
     <div className="space-y-4">
-      <div className="card flex flex-wrap items-end gap-3 p-4">
-        <div>
-          <label className="label">Mês</label>
-          <input type="month" className="input w-auto" value={mes}
-                 onChange={e => setMes(e.target.value)} />
+      <div className="card p-4">
+        <div className="flex flex-wrap items-end gap-x-6 gap-y-3">
+          <div>
+            <label className="label">Mês</label>
+            <input type="month" className="input w-auto" value={mes}
+                   onChange={e => setMes(e.target.value)} />
+          </div>
+          {podeEscrever && (
+            <PreencherVazios
+              onAplicar={n => setLinhas(ls => ls.map(l =>
+                (!l.existe && l.staff === 0 && l.dia <= hoje ? { ...l, staff: n } : l)))}
+            />
+          )}
+          {!podeEscrever && (
+            <span className="chip mb-2 bg-amber-100 text-amber-800">só consulta</span>
+          )}
         </div>
-        {podeEscrever && (
-          <PreencherVazios
-            onAplicar={n => setLinhas(ls => ls.map(l =>
-              (!l.existe && l.staff === 0 && l.dia <= hoje ? { ...l, staff: n } : l)))}
-          />
-        )}
-        <p className="min-w-[220px] flex-1 text-xs text-slate-500">
+        <p className="mt-3 border-t border-slate-100 pt-3 text-xs text-slate-500">
           Os quartos e as saídas vêm do relatório de turno — só se escrevem para corrigir.
           Toca no dia para abrir a nota, as limpezas e o outsourcing.
+          {podeEscrever && ' O preenchimento em bloco só mexe nos dias já passados que ainda estão em branco.'}
         </p>
-        {!podeEscrever && <span className="chip bg-amber-100 text-amber-800">só consulta</span>}
       </div>
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
@@ -619,18 +624,27 @@ function NovoTurno({
   )
 }
 
+/**
+ * Põe o mesmo número de turnos em todos os dias ainda em branco, para depois
+ * só se corrigirem as excepções. Escreve-se na grelha, não na base de dados:
+ * fica a marcar como alterado e ainda se pode descartar.
+ */
 function PreencherVazios({ onAplicar }: { onAplicar: (n: number) => void }) {
   const [n, setN] = useState(0)
   return (
-    <div>
+    // o traço separa isto do mês, para não se ler tudo como uma frase só
+    <div className="sm:border-l sm:border-slate-200 sm:pl-6">
       <label className="label">Preencher os dias vazios</label>
-      <div className="flex items-center gap-1.5">
-        <NumInput className="h-9 w-20 text-sm" value={n} onChange={setN} />
+      <div className="flex items-center gap-2">
+        <span className="text-sm text-slate-500">com</span>
+        <NumInput className="h-9 w-16 text-sm" value={n} onChange={setN} />
+        <span className="text-sm text-slate-500">
+          {n === 1 ? 'turno' : 'turnos'}
+        </span>
         <button className="btn-ghost shrink-0" disabled={n <= 0} onClick={() => onAplicar(n)}>
-          turnos
+          Aplicar
         </button>
       </div>
-      <p className="mt-0.5 text-[11px] text-slate-400">só os dias passados e por escrever</p>
     </div>
   )
 }

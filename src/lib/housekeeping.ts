@@ -234,6 +234,68 @@ export async function guardarDia(
   if (error) throw error
 }
 
+/**
+ * Grava vários dias de uma vez, para se poder preencher o mês numa tabela em vez
+ * de dia a dia.
+ *
+ * Cada linha leva os seus próprios rácios: as que já existem levam os que têm
+ * gravados, as novas levam os que estão em vigor. É o mesmo princípio de sempre
+ * — afinar os rácios em Definições não reescreve o que já passou — só que aqui
+ * é preciso dizê-lo linha a linha, porque um upsert em bloco escreve todas as
+ * colunas que lhe damos.
+ */
+export async function guardarDias(
+  hotelId: string,
+  linhas: Pick<Dia, 'dia' | 'quartos_ocupados' | 'saidas' | 'staff' | 'nota'
+                  | 'min_por_quarto' | 'min_por_saida' | 'horas_por_turno'>[],
+  por: string | null,
+) {
+  if (!linhas.length) return
+  const { error } = await supabase.from('hk_dias').upsert(
+    linhas.map(l => ({
+      hotel_id: hotelId,
+      dia: l.dia,
+      quartos_ocupados: l.quartos_ocupados,
+      saidas: l.saidas,
+      staff: l.staff,
+      nota: l.nota,
+      min_por_quarto: l.min_por_quarto,
+      min_por_saida: l.min_por_saida,
+      horas_por_turno: l.horas_por_turno,
+      atualizado_por: por,
+    })),
+    { onConflict: 'hotel_id,dia' },
+  )
+  if (error) throw error
+}
+
+/**
+ * As limpezas gerais são uma lista com descrição — na tabela do mês há só um
+ * número por dia. Enquanto o dia tiver uma linha só, o número mexe-a; a zero,
+ * apaga-a. Um dia com várias linhas discriminadas não se deixa esmagar por um
+ * número: esse edita-se no Registo.
+ */
+export async function definirLimpezaDoDia(
+  hotelId: string, dia: string, minutos: number, existentes: Limpeza[],
+) {
+  if (existentes.length > 1) throw new Error(
+    `${dmyCurto(dia)} tem várias limpezas discriminadas — edita-as no Registo do dia.`)
+  const actual = existentes[0]
+  if (minutos <= 0) {
+    if (actual) await apagarLimpeza(actual.id)
+    return
+  }
+  if (actual) {
+    const { error } = await supabase.from('hk_limpezas')
+      .update({ minutos }).eq('id', actual.id)
+    if (error) throw error
+    return
+  }
+  await juntarLimpeza(hotelId, { dia, descricao: 'Limpezas gerais', minutos })
+}
+
+const dmyCurto = (iso: string) => `${iso.slice(8)}/${iso.slice(5, 7)}`
+
 export async function juntarLimpeza(hotelId: string, l: Omit<Limpeza, 'id'>) {
   const { error } = await supabase.from('hk_limpezas').insert({ ...l, hotel_id: hotelId })
   if (error) throw error

@@ -26,6 +26,7 @@ import RhCustos from './pages/RhCustos'
 import RhDefinicoes from './pages/RhDefinicoes'
 import Lavandaria from './pages/Lavandaria'
 import HkRegisto from './pages/HkRegisto'
+import HkMes from './pages/HkMes'
 import HkMapa from './pages/HkMapa'
 import HkOutsourcing from './pages/HkOutsourcing'
 import HkDefinicoes from './pages/HkDefinicoes'
@@ -113,6 +114,7 @@ function Interior() {
         <Route path="/rh-definicoes" element={<SoAdmin><RhDefinicoes /></SoAdmin>} />
         <Route path="/lavandaria" element={<SoLav><Lavandaria /></SoLav>} />
         <Route path="/hk" element={<SoHk><HkRegisto /></SoHk>} />
+        <Route path="/hk-mes" element={<SoHk><HkMes /></SoHk>} />
         <Route path="/hk-mapa" element={<SoHk><HkMapa /></SoHk>} />
         <Route path="/hk-outsourcing" element={<SoHk><HkOutsourcing /></SoHk>} />
         <Route path="/hk-definicoes" element={<SoAdmin><HkDefinicoes /></SoAdmin>} />

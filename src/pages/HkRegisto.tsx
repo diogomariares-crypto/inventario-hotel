@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import { useApp } from '../lib/appState'
 import { useAuth } from '../lib/auth'
 import {
@@ -16,7 +17,14 @@ export default function HkRegisto() {
   const toast = useToast()
   const podeEscrever = canWrite('HSK')
 
-  const [dia, setDia] = useState(todayISO())
+  // O Mês inteiro liga para aqui com ?dia=…, para se abrir o dia que se estava a ver.
+  const [params, setParams] = useSearchParams()
+  const [dia, setDiaCru] = useState(params.get('dia') || todayISO())
+  const setDia = (f: string | ((d: string) => string)) => setDiaCru(d => {
+    const novo = typeof f === 'function' ? f(d) : f
+    setParams(novo === todayISO() ? {} : { dia: novo }, { replace: true })
+    return novo
+  })
   const [param, setParam] = useState<Parametros | null>(null)
   const [registo, setRegisto] = useState<Dia | null>(null)
   const [limpezas, setLimpezas] = useState<Limpeza[]>([])

@@ -8,6 +8,7 @@ import {
 } from '../lib/housekeeping'
 import { MESES, dmy, lastDayOfMonth, qty } from '../lib/format'
 import { Loading, StatCard } from '../components/ui'
+import { ehMes, mesCorrente, useLembrado } from '../lib/lembrar'
 import BarrasAno from '../components/BarrasAno'
 
 type Linha = { d: Dia; b: Balanco }
@@ -15,7 +16,7 @@ type Linha = { d: Dia; b: Balanco }
 export default function HkMapa() {
   const { hotelId } = useApp()
   const nav = useNavigate()
-  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7))
+  const [mes, setMes] = useLembrado('hk.mes', mesCorrente, ehMes)
   const [param, setParam] = useState<Parametros | null>(null)
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [ano, setAno] = useState<Linha[]>([])

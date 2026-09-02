@@ -11,6 +11,7 @@ import {
 } from '../lib/caixa'
 import { dmy, lastDayOfMonth, money, todayISO } from '../lib/format'
 import { Loading, Modal, NumInput, Spinner, StatCard, useToast } from '../components/ui'
+import { ehMes, mesCorrente, useLembrado } from '../lib/lembrar'
 
 type Dados = {
   recebido: Recebido[]; saidas: Saida[]; envelopes: Envelope[]
@@ -44,8 +45,8 @@ export default function CaixaPage() {
   const toast = useToast()
 
   const [caixas, setCaixas] = useState<Caixa[]>([])
-  const [caixaId, setCaixaId] = useState<string>('')
-  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7))
+  const [caixaId, setCaixaId] = useLembrado('caixa.id', '')
+  const [mes, setMes] = useLembrado('caixa.mes', mesCorrente, ehMes)
   const [d, setD] = useState<Dados | null>(null)
   const [loading, setLoading] = useState(true)
   const [erro, setErro] = useState<string | null>(null)
@@ -54,7 +55,11 @@ export default function CaixaPage() {
 
   useEffect(() => {
     fetchCaixas()
-      .then(cs => { setCaixas(cs); setCaixaId(c => c || cs[0]?.id || '') })
+      .then(cs => {
+        setCaixas(cs)
+        // a caixa lembrada pode ter sido desactivada entretanto
+        setCaixaId(c => (cs.some(x => x.id === c) ? c : cs[0]?.id ?? ''))
+      })
       .catch(e => setErro((e as Error).message))
   }, [])
 

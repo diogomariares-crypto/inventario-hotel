@@ -5,10 +5,11 @@ import type { Department, VCount } from '../lib/types'
 import { DEPARTMENTS } from '../lib/types'
 import { dm, dmy, downloadCSV, money, monthLabel, qty } from '../lib/format'
 import { Empty, Loading } from '../components/ui'
+import { useLembrado } from '../lib/lembrar'
 
 export default function Historico() {
   const { hotelId, hotels } = useApp()
-  const [dept, setDept] = useState<Department | ''>('')
+  const [dept, setDept] = useLembrado<Department | ''>('inv.hist.dept', '')
   const [rows, setRows] = useState<VCount[]>([])
   const [loading, setLoading] = useState(true)
   const [busca, setBusca] = useState('')

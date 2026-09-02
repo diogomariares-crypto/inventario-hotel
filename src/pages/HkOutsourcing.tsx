@@ -2,11 +2,12 @@ import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../lib/appState'
 import { useAuth } from '../lib/auth'
 import {
-  apagarTurno, custoDoTurno, fetchOutsourcing, fetchParametros,
-  type Parametros, type Turno,
+  apagarTurno, custoDoTurno, fetchOutsourcing, fetchParametros, horas, juntarTurno,
+  minutosDoTurno, type Parametros, type Turno,
 } from '../lib/housekeeping'
-import { MESES, diaSemanaCurto, dmy, lastDayOfMonth, money } from '../lib/format'
-import { Loading, StatCard, useToast } from '../components/ui'
+import { MESES, diaSemanaCurto, dmy, lastDayOfMonth, money, todayISO } from '../lib/format'
+import { Loading, NumInput, StatCard, useToast } from '../components/ui'
+import { ehMes, mesCorrente, useLembrado } from '../lib/lembrar'
 
 export default function HkOutsourcing() {
   const { hotelId } = useApp()
@@ -14,8 +15,8 @@ export default function HkOutsourcing() {
   const toast = useToast()
   const podeEscrever = canWrite('HSK')
 
-  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7))
-  const [ano, setAno] = useState(false)
+  const [mes, setMes] = useLembrado('hk.mes', mesCorrente, ehMes)
+  const [ano, setAno] = useLembrado('hk.ano', false)
   const [turnos, setTurnos] = useState<Turno[]>([])
   const [param, setParam] = useState<Parametros | null>(null)
   const [loading, setLoading] = useState(true)
@@ -89,7 +90,7 @@ export default function HkOutsourcing() {
         <p className="flex-1 text-xs text-slate-500">
           A {money(param.preco_hora_outsourcing)}/hora, ×{param.multiplicador_feriado} em
           feriados, com IVA a {(param.taxa_iva * 100).toLocaleString('pt-PT')}%.
-          Os turnos lançam-se no dia, em Registo.
+          Lança-se aqui em baixo, ou dentro do dia no separador Mês.
         </p>
       </div>
 
@@ -127,6 +128,16 @@ export default function HkOutsourcing() {
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {podeEscrever && hotelId && (
+        <div className="card p-4">
+          <h3 className="text-sm font-semibold text-slate-700">Juntar um turno</h3>
+          <NovoTurno
+            mes={mes}
+            onJuntar={async t => { await juntarTurno(hotelId, t); carregar() }}
+          />
         </div>
       )}
 
@@ -202,6 +213,73 @@ export default function HkOutsourcing() {
           </dl>
         </div>
       </div>
+    </div>
+  )
+}
+
+/**
+ * Um turno de gente de fora. O dia arranca no mês que se está a ver, para não
+ * ser preciso navegar até lá — mas se o mês for o corrente arranca em hoje.
+ */
+function NovoTurno({
+  mes, onJuntar,
+}: {
+  mes: string
+  onJuntar: (t: Omit<Turno, 'id'>) => Promise<void>
+}) {
+  const hoje = todayISO()
+  const [t, setT] = useState({
+    dia: hoje.slice(0, 7) === mes ? hoje : `${mes}-01`,
+    nome: '', feriado: false, hora_inicio: '09:00', hora_fim: '17:30', almoco_min: 30,
+  })
+  const [aGravar, setAGravar] = useState(false)
+  const minutos = minutosDoTurno(t)
+
+  return (
+    <div className="mt-3 flex flex-wrap items-end gap-2">
+      <div>
+        <label className="label">Dia</label>
+        <input type="date" className="input h-9 w-auto text-sm" value={t.dia}
+               onChange={e => setT({ ...t, dia: e.target.value })} />
+      </div>
+      <div className="min-w-[140px] flex-1">
+        <label className="label">Nome</label>
+        <input className="input h-9 text-sm" value={t.nome}
+               placeholder="quem veio"
+               onChange={e => setT({ ...t, nome: e.target.value })} />
+      </div>
+      <div>
+        <label className="label">Entrada</label>
+        <input type="time" className="input h-9 w-auto text-sm" value={t.hora_inicio}
+               onChange={e => setT({ ...t, hora_inicio: e.target.value })} />
+      </div>
+      <div>
+        <label className="label">Saída</label>
+        <input type="time" className="input h-9 w-auto text-sm" value={t.hora_fim}
+               onChange={e => setT({ ...t, hora_fim: e.target.value })} />
+      </div>
+      <div className="w-20">
+        <label className="label">Almoço</label>
+        <NumInput className="h-9 text-sm" value={t.almoco_min}
+                  onChange={n => setT({ ...t, almoco_min: n })} />
+      </div>
+      <label className="flex items-center gap-1.5 pb-2 text-sm text-slate-600">
+        <input type="checkbox" checked={t.feriado}
+               onChange={e => setT({ ...t, feriado: e.target.checked })} />
+        feriado
+      </label>
+      <span className="pb-2 text-sm tabular-nums text-slate-500">{horas(minutos)}</span>
+      <button
+        className="btn-primary shrink-0"
+        disabled={aGravar || !t.nome.trim() || minutos <= 0}
+        onClick={async () => {
+          setAGravar(true)
+          try {
+            await onJuntar({ ...t, nome: t.nome.trim() })
+            setT({ ...t, nome: '' })
+          } finally { setAGravar(false) }
+        }}
+      >{aGravar ? 'A juntar…' : 'Juntar'}</button>
     </div>
   )
 }

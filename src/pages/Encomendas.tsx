@@ -18,11 +18,10 @@ type PurchaseRow = Purchase & {
 }
 
 export default function Encomendas() {
-  const { hotelId } = useApp()
+  const { hotelId, dept, setDept } = useApp()
   const { canWrite, email, isAdmin } = useAuth()
   const toast = useToast()
 
-  const [dept, setDept] = useState<Department>('HSK')
   const [stock, setStock] = useState<StockRow[]>([])
   const [compras, setCompras] = useState<PurchaseRow[]>([])
   const [loading, setLoading] = useState(true)

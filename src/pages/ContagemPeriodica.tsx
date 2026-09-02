@@ -9,6 +9,7 @@ import {
 import type { Count, Department, Item, Period, PeriodKind } from '../lib/types'
 import { addDays, dmy, lastDayOfMonth, money, qty, todayISO } from '../lib/format'
 import { Loading, Modal, NumInput, Spinner, useToast } from '../components/ui'
+import { useLembrado } from '../lib/lembrar'
 import { supabase } from '../lib/supabase'
 import ARepor from '../components/ARepor'
 
@@ -25,7 +26,7 @@ export default function ContagemPeriodica({ dept }: { dept: Department }) {
   const toast = useToast()
   const editable = canWrite(dept)
 
-  const [freq, setFreq] = useState<PeriodKind>('semanal')
+  const [freq, setFreq] = useLembrado<PeriodKind>('inv.freq', 'semanal')
   const [periods, setPeriods] = useState<Period[]>([])
   const [period, setPeriod] = useState<Period | null>(null)
   const [items, setItems] = useState<Item[]>([])

@@ -6,6 +6,7 @@ import type { Count, Item, Period } from '../lib/types'
 import { MOTIVOS } from '../lib/types'
 import { money, monthLabel, monthRange, qty } from '../lib/format'
 import { Loading, NumInput, Spinner, useToast } from '../components/ui'
+import { ehMes, mesCorrente, useLembrado } from '../lib/lembrar'
 import { supabase } from '../lib/supabase'
 
 type Entry = {
@@ -45,7 +46,7 @@ export default function ContagemMensal() {
 
   const [items, setItems] = useState<Item[]>([])
   const [periods, setPeriods] = useState<Period[]>([])
-  const [month, setMonth] = useState<string>(new Date().toISOString().slice(0, 7))
+  const [month, setMonth] = useLembrado('inv.mes', mesCorrente, ehMes)
   const [period, setPeriod] = useState<Period | null>(null)
   const [entries, setEntries] = useState<Record<string, Entry>>({})
   const [loading, setLoading] = useState(true)

@@ -19,6 +19,7 @@ import {
 } from '../lib/housekeeping'
 import { diaSemanaCurto, dmy, lastDayOfMonth, money, qty, todayISO } from '../lib/format'
 import { Loading, NumInput, Spinner, StatCard, useToast } from '../components/ui'
+import { ehMes, mesCorrente, useLembrado } from '../lib/lembrar'
 
 interface Linha {
   dia: string
@@ -45,7 +46,7 @@ export default function HkMes() {
   const toast = useToast()
   const podeEscrever = canWrite('HSK')
 
-  const [mes, setMes] = useState(new Date().toISOString().slice(0, 7))
+  const [mes, setMes] = useLembrado('hk.mes', mesCorrente, ehMes)
   const [param, setParam] = useState<Parametros | null>(null)
   const [linhas, setLinhas] = useState<Linha[]>([])
   const [original, setOriginal] = useState<Record<string, Linha>>({})

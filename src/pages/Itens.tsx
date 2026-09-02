@@ -23,14 +23,13 @@ const vazio = (dept: Department, hotelId: string | null): Partial<Item> => ({
 })
 
 export default function Itens() {
-  const { hotelId } = useApp()
+  const { hotelId, dept, setDept } = useApp()
   const { allowedDepartments } = useAuth()
   const toast = useToast()
   // Só se mostram os departamentos em que a pessoa pode mesmo escrever — a
   // base de dados recusaria os outros, e um separador que não funciona
   // é pior do que separador nenhum.
   const meus = allowedDepartments
-  const [dept, setDept] = useState<Department>(meus[0] ?? 'HSK')
   useEffect(() => { if (meus.length && !meus.includes(dept)) setDept(meus[0]) }, [meus])
   const [items, setItems] = useState<Item[]>([])
   const [loading, setLoading] = useState(true)

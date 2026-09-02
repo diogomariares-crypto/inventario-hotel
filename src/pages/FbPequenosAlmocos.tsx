@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useApp } from '../lib/appState'
 import { useAuth } from '../lib/auth'
 import { Loading, Modal, NumInput, useToast } from '../components/ui'
+import { useLembrado } from '../lib/lembrar'
 import BarrasAno, { Legenda, type Ponto } from '../components/BarrasAno'
 import { eur, num, pct, seta, corDelta, variacao, MESES, MESES3 } from '../lib/fbDash'
 
@@ -52,7 +53,7 @@ export default function FbPequenosAlmocos() {
 
   const [d, setD] = useState<Dados | null>(null)
   const [loading, setLoading] = useState(true)
-  const [ano, setAno] = useState<number | null>(null)
+  const [ano, setAno] = useLembrado<number | null>('fb.pa.ano', null)
   const [form, setForm] = useState<Rascunho | null>(null)
   const [aGravar, setAGravar] = useState(false)
 

@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useApp } from '../lib/appState'
 import { Loading, useToast } from '../components/ui'
+import { useLembrado } from '../lib/lembrar'
 import BarrasAno, { Legenda, type Ponto } from '../components/BarrasAno'
 import {
   type Dash, type Metrica, SERVICOS, METRICAS,
@@ -14,8 +15,8 @@ export default function FbDashboard() {
   const toast = useToast()
   const { hotels, hotelId, setHotelId } = useApp()
 
-  const [ano, setAno] = useState(new Date().getFullYear())
-  const [mes, setMes] = useState<number | null>(null)
+  const [ano, setAno] = useLembrado('fb.ano', () => new Date().getFullYear())
+  const [mes, setMes] = useLembrado<number | null>('fb.mes', null)
   const [svc, setSvc] = useState('all')
   const [met, setMet] = useState<Metrica>('eur')
   const [d, setD] = useState<Dash | null>(null)

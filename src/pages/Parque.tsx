@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { useAuth } from '../lib/auth'
 import { useApp } from '../lib/appState'
 import { Loading, Modal, useToast } from '../components/ui'
+import { useLembrado } from '../lib/lembrar'
 import {
   type Lugar, type Reserva,
   HOTEIS_PARQUE, corDoHotel,
@@ -42,7 +43,7 @@ export default function Parque() {
   const [lugares, setLugares] = useState<Lugar[]>([])
   const [reservas, setReservas] = useState<Reserva[]>([])
   const [loading, setLoading] = useState(true)
-  const [filtro, setFiltro] = useState<string>('todos')
+  const [filtro, setFiltro] = useLembrado('parque.filtro', 'todos')
 
   const [ativa, setAtiva] = useState<Reserva | null>(null)
   const [rascunho, setRascunho] = useState<Rascunho | null>(null)

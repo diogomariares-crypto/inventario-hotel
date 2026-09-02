@@ -9,6 +9,7 @@ import type { Department, VCount } from '../lib/types'
 import { deptLabel } from '../lib/types'
 import { dm, dmy, money, monthLabel, qty } from '../lib/format'
 import { Empty, Loading, StatCard } from '../components/ui'
+import { useLembrado } from '../lib/lembrar'
 
 const CORES: Record<string, string> = { FO: '#1a6b4a', HSK: '#b8860b', FB: '#3b6fb8' }
 
@@ -16,7 +17,7 @@ export default function Dashboard() {
   const { hotelId, hotels } = useApp()
   const [rows, setRows] = useState<VCount[]>([])
   const [loading, setLoading] = useState(true)
-  const [meses, setMeses] = useState(6)
+  const [meses, setMeses] = useLembrado('painel.meses', 6)
   const [item, setItem] = useState<string | null>(null)
 
   const desde = useMemo(() => {

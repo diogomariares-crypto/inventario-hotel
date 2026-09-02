@@ -25,7 +25,6 @@ import Rh from './pages/Rh'
 import RhCustos from './pages/RhCustos'
 import RhDefinicoes from './pages/RhDefinicoes'
 import Lavandaria from './pages/Lavandaria'
-import HkRegisto from './pages/HkRegisto'
 import HkMes from './pages/HkMes'
 import HkMapa from './pages/HkMapa'
 import HkOutsourcing from './pages/HkOutsourcing'
@@ -113,7 +112,8 @@ function Interior() {
         <Route path="/rh-custos" element={<SoRh><RhCustos /></SoRh>} />
         <Route path="/rh-definicoes" element={<SoAdmin><RhDefinicoes /></SoAdmin>} />
         <Route path="/lavandaria" element={<SoLav><Lavandaria /></SoLav>} />
-        <Route path="/hk" element={<SoHk><HkRegisto /></SoHk>} />
+        {/* o registo dia-a-dia foi absorvido pela tabela do mês */}
+        <Route path="/hk" element={<Navigate to="/hk-mes" replace />} />
         <Route path="/hk-mes" element={<SoHk><HkMes /></SoHk>} />
         <Route path="/hk-mapa" element={<SoHk><HkMapa /></SoHk>} />
         <Route path="/hk-outsourcing" element={<SoHk><HkOutsourcing /></SoHk>} />

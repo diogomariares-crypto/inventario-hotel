@@ -94,9 +94,8 @@ export const MODULOS: Modulo[] = [
     icone: '⌂',
     soHk: true,
     paginas: [
-      { to: '/hk', label: 'Registo do dia' },
-      { to: '/hk-mes', label: 'Mês inteiro' },
-      { to: '/hk-mapa', label: 'Mapa do mês' },
+      { to: '/hk-mes', label: 'Mês' },
+      { to: '/hk-mapa', label: 'Mapa' },
       { to: '/hk-outsourcing', label: 'Outsourcing' },
       { to: '/hk-definicoes', label: 'Definições', soAdmin: true },
     ],

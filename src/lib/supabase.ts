@@ -14,7 +14,7 @@ export const supabase = createClient(url, key, {
 
 /*
  * Links de recuperação e de convite voltam com os tokens no fragmento:
- *   .../inventario-hotel/#access_token=...&refresh_token=...&type=recovery
+ *   .../operacoes/#access_token=...&refresh_token=...&type=recovery
  * Só que a app usa HashRouter, que trata o fragmento como se fosse a rota.
  * Ao arrancar, o router não reconhece "#access_token=..." e reescreve o hash
  * para "#/", deitando os tokens fora antes de alguém os ler — o link parecia
